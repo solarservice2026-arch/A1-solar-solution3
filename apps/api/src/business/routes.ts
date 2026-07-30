@@ -152,10 +152,88 @@ customersRouter.post(
         "Name, mobile and customer type are required",
         "VALIDATION_ERROR",
       );
-    const { data, error } = await db()
+
+    const client = db();
+    let profileId: string | null = null;
+
+    if (b.email && b.password) {
+      const email = String(b.email).trim().toLowerCase();
+      const password = String(b.password).trim();
+
+      if (password.length < 6) {
+        throw new AppError(
+          400,
+          "Password must be at least 6 characters long",
+          "VALIDATION_ERROR",
+        );
+      }
+
+      let userId: string | undefined;
+
+      const { data: createdUser, error: authErr } =
+        await client.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: b.name },
+        });
+
+      if (createdUser?.user) {
+        userId = createdUser.user.id;
+      } else if (
+        authErr?.message?.includes("already registered") ||
+        authErr?.message?.includes("already exists")
+      ) {
+        const { data: existingProfiles } = await client
+          .from("profiles")
+          .select("id")
+          .eq("phone", b.mobile)
+          .limit(1);
+
+        if (existingProfiles && existingProfiles.length > 0) {
+          userId = existingProfiles[0].id;
+          await client.auth.admin.updateUserById(userId, { password });
+        } else {
+          throw new AppError(
+            400,
+            "An account with this email address already exists",
+            "EMAIL_EXISTS",
+          );
+        }
+      } else if (authErr) {
+        throw new AppError(400, authErr.message, "USER_CREATION_FAILED");
+      }
+
+      if (userId) {
+        profileId = userId;
+
+        await client.from("profiles").upsert({
+          id: userId,
+          full_name: b.name,
+          phone: b.mobile,
+          active: true,
+        });
+
+        const { data: customerRole } = await client
+          .from("roles")
+          .select("id")
+          .eq("name", "customer")
+          .single();
+
+        if (customerRole) {
+          await client.from("user_roles").upsert({
+            user_id: userId,
+            role_id: customerRole.id,
+          });
+        }
+      }
+    }
+
+    const { data, error } = await client
       .from("customers")
       .insert({
         customer_number: number("CUS"),
+        profile_id: profileId,
         name: b.name,
         customer_type: b.customerType,
         mobile: b.mobile,
@@ -167,6 +245,7 @@ customersRouter.post(
       })
       .select()
       .single();
+
     if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
     return success(res.status(201), "Customer created", data);
   }),

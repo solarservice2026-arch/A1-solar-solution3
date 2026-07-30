@@ -135,9 +135,11 @@ function DataPage({
               <input
                 name={name}
                 type={type}
+                placeholder={type === "password" ? "Set login password for customer" : undefined}
                 required={
                   ![
                     "email",
+                    "password",
                     "gstNumber",
                     "consumerNumber",
                     "provider",
@@ -237,6 +239,7 @@ export function CustomersPage() {
         ["name", "Customer name", "text"],
         ["mobile", "Mobile", "tel"],
         ["email", "Email", "email"],
+        ["password", "Password (for customer login)", "password"],
         ["customerType", "Customer type", "text"],
         ["gstNumber", "GST number", "text"],
         ["consumerNumber", "Consumer number", "text"],
