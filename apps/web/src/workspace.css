@@ -90,3 +90,70 @@ html{scroll-behavior:smooth}
 @media(max-width:760px){.invoice-form{padding:18px}.invoice-fields,.invoice-footer{grid-template-columns:1fr}.invoice-products-head{align-items:stretch}.invoice-products-head select{width:100%}}
 @media(max-width:700px){.operational-form:has(>h2 + .detail-grid):not(.invoice-form){padding:18px}.operational-form:has(>h2 + .detail-grid):not(.invoice-form)>.detail-grid{grid-template-columns:1fr}.operational-form:has(>h2 + .detail-grid):not(.invoice-form)>.page-bar{align-items:stretch}.operational-form:has(>h2 + .detail-grid):not(.invoice-form)>.page-bar select{width:100%}}
 @media(max-width:520px){.role-grid{grid-template-columns:1fr}.app-page h1{font-size:26px}.table-wrap{border-radius:7px}}
+
+/* Global Button, Input, & Select Text Alignment Fixes across the Whole Website */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  box-sizing: border-box;
+  line-height: 1.25;
+}
+
+select {
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 32px 0 14px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 40px !important;
+  vertical-align: middle !important;
+  border-radius: 7px !important;
+  border: 1px solid #cbd6d2 !important;
+  background-color: #fff !important;
+  color: #164a50 !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 14px !important;
+  font-size: 14px !important;
+  line-height: 40px !important;
+  vertical-align: middle !important;
+  box-sizing: border-box !important;
+}
+
+button, .primary, .secondary, .back-button, .row-actions button, .toolbar button, .table-wrap button, .danger {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  vertical-align: middle !important;
+  overflow: visible !important;
+  white-space: nowrap !important;
+  line-height: 1 !important;
+}
+
+.primary, .secondary {
+  height: 42px !important;
+  min-height: 42px !important;
+  padding: 0 20px !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  border-radius: 7px !important;
+}
+
+.toolbar button, .table-wrap button, .row-actions button, .danger, .back-button {
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border-radius: 7px !important;
+}
+
