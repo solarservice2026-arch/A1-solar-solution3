@@ -6,13 +6,11 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
-  Menu,
   Package,
   Settings,
   Sun,
   UserCircle,
   Users,
-  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
@@ -119,9 +117,6 @@ export function AppShell() {
             <Sun />
           </span>
           <b>A1 Solar</b>
-          <button onClick={() => setOpen(false)}>
-            <X />
-          </button>
         </div>
         <nav>
           {items
@@ -146,9 +141,6 @@ export function AppShell() {
       <div className="app-main">
         <header className="app-top">
           <div className="header-context">
-            <button className="drawer" aria-label="Toggle menu" onClick={() => setOpen(true)}>
-              <Menu />
-            </button>
             <button
               className="back-button"
               aria-label="Go back"
