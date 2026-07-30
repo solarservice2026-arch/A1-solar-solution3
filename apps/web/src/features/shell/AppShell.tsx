@@ -145,12 +145,12 @@ export function AppShell() {
       </aside>
       <div className="app-main">
         <header className="app-top">
-          <button className="drawer" onClick={() => setOpen(true)}>
-            <Menu />
-          </button>
           <div className="header-context">
+            <button className="drawer" aria-label="Toggle menu" onClick={() => setOpen(true)}>
+              <Menu />
+            </button>
             <button
-              className="back-button desktop-back-button"
+              className="back-button"
               aria-label="Go back"
               onClick={() =>
                 location.pathname === "/app" ? navigate("/") : navigate(-1)
@@ -159,29 +159,19 @@ export function AppShell() {
               <ArrowLeft />
               <span>Back</span>
             </button>
-            <div>
-              <small>Workspace</small>
+            <div className="header-title-box">
+              <small>WORKSPACE</small>
               <b>{crumb}</b>
             </div>
           </div>
           <div className="app-user">
-            <button
-              className="back-button mobile-back-button"
-              aria-label="Go back"
-              onClick={() =>
-                location.pathname === "/app" ? navigate("/") : navigate(-1)
-              }
-            >
-              <ArrowLeft />
-              <span>Back</span>
-            </button>
-            <button className="desktop-notification-button" aria-label="Notifications">
+            <button className="icon-button" aria-label="Notifications">
               <Bell />
             </button>
-            <span>
-              {user?.fullName}
+            <div className="user-profile-badge">
+              <span>{user?.fullName}</span>
               <small>{user?.roles.join(", ").replaceAll("_", " ")}</small>
-            </span>
+            </div>
           </div>
         </header>
         <Outlet />
