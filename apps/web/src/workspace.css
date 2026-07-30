@@ -289,4 +289,47 @@ button, .primary, .secondary, .back-button, .row-actions button, .toolbar button
   }
 }
 
+/* Sidebar Navigation & Sign Out Button Pixel-Perfect Alignment */
+.app-sidebar nav a,
+.logout {
+  width: 100% !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  padding: 0 12px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #bed0ce !important;
+  background: transparent !important;
+  border: 0 !important;
+  cursor: pointer !important;
+  text-align: left !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s ease !important;
+}
+
+.app-sidebar nav a svg,
+.logout svg {
+  width: 19px !important;
+  height: 19px !important;
+  min-width: 19px !important;
+  color: #bed0ce !important;
+}
+
+.app-sidebar nav a:hover,
+.logout:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.logout {
+  margin-top: auto !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 7px !important;
+  padding-top: 0 !important;
+}
+
 
