@@ -191,8 +191,19 @@ customersRouter.post(
           .limit(1);
 
         if (existingProfiles && existingProfiles.length > 0) {
-          userId = existingProfiles[0].id;
-          await client.auth.admin.updateUserById(userId, { password });
+          const existingProfile = existingProfiles[0];
+
+          const existingUserId = existingProfile?.id;
+          if (!existingUserId) {
+            throw new AppError(
+              400,
+              "Unable to resolve existing user profile",
+              "USER_PROFILE_NOT_FOUND",
+            );
+          }
+
+          userId = existingUserId;
+          await client.auth.admin.updateUserById(existingUserId, { password });
         } else {
           throw new AppError(
             400,
