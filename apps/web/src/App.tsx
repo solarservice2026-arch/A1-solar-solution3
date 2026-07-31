@@ -138,8 +138,8 @@ function Footer() {
         </div>
         <div>
           <b>Contact</b>
-          <a href="tel:+917839213375">+91 78392 13375</a>
-          <a href="mailto:harshsingh78392133@gmail.com">Email our team</a>
+          <a href="tel:+917739661147">+91 77396 61147</a>
+          <a href="mailto:a1solarsolution2026@gmail.com">Email our team</a>
           <span>India</span>
         </div>
       </div>
@@ -410,8 +410,8 @@ function Contact() {
         <span className="kicker">LET’S TALK SOLAR</span>
         <h1>Tell us about your site.</h1>
         <p>Share a few details and our team will help plan the next step.</p>
-        <a href="tel:+917839213375">
-          <Phone /> +91 78392 13375
+        <a href="tel:+917739661147">
+          <Phone /> +91 77396 61147
         </a>
       </div>
       <form className="card form" onSubmit={submit}>
