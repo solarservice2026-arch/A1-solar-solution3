@@ -1,25 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build -w @a1/validation && npm run build -w @a1/api && npm run build -w @a1/web",
+  "buildCommand": "npm run build -w @a1/validation && npm run build -w @a1/web",
   "outputDirectory": "apps/web/dist",
   "installCommand": "npm install",
-  "functions": {
-    "api/[...path].ts": {
-      "maxDuration": 30
-    }
-  },
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://a1-solar-api.onrender.com/api/:path*"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "/assets/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/((?!api/|assets/|robots.txt|sitemap.xml).*)",
+      "destination": "/index.html"
     }
   ]
 }
