@@ -23,6 +23,7 @@ import {
   ResetPasswordPage,
 } from "./features/auth/AuthPages";
 import { ProtectedRoute } from "./features/auth/ProtectedRoute";
+import { useAuth } from "./features/auth/AuthProvider";
 import {
   AgreementsPage,
   CustomersPage,
@@ -54,6 +55,7 @@ const nav = [
 ] as const;
 function Header() {
   const [open, setOpen] = useState(false);
+  const { user, signOut } = useAuth();
   return (
     <header className="header">
       <Link className="brand" to="/">
@@ -71,9 +73,33 @@ function Header() {
             {label}
           </a>
         ))}
-        <NavLink className="login" to="/login">
-          Portal login <ChevronRight size={16} />
-        </NavLink>
+        {user ? (
+          <>
+            <NavLink className="login" to="/app" onClick={() => setOpen(false)} style={{ marginRight: "10px" }}>
+              Dashboard
+            </NavLink>
+            <button
+              onClick={() => {
+                setOpen(false);
+                void signOut();
+              }}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--ink)",
+                padding: "10px 16px",
+                borderRadius: "4px",
+                fontWeight: 600,
+                cursor: "pointer"
+              }}
+            >
+              Logout
+            </button>
+          </>
+        ) : (
+          <NavLink className="login" to="/login" onClick={() => setOpen(false)}>
+            Portal login <ChevronRight size={16} />
+          </NavLink>
+        )}
       </nav>
       <button
         className="menu"
