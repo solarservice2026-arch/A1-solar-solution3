@@ -30,7 +30,7 @@ export class SupabaseAuthProvider implements AuthProvider {
         };
       }
 
-      const url = env.SUPABASE_URL || "https://zeftnexlsgxjcolvaooe.supabase.co";
+      const url = env.SUPABASE_URL || "https://ugcearfqlcyzhmbfmcru.supabase.co";
       const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY || "sb_publishable_ZN3-qlsbWTvy8YcXLQr3OQ_JvmoTGwD";
 
       try {

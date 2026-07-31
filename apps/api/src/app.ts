@@ -186,10 +186,11 @@ app.use((_req, res) =>
 );
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const errObj = typeof error === "object" && error !== null ? (error as Record<string, any>) : {};
+  const isZod = errObj.name === "ZodError" || Array.isArray(errObj.issues);
   const status = typeof errObj.status === "number" && errObj.status >= 400 && errObj.status < 600 ? errObj.status : 400;
   const rawMsg = typeof errObj.message === "string" ? errObj.message.trim() : error instanceof Error ? error.message : "";
   const message = rawMsg || "Invalid request parameters";
-  const code = typeof errObj.code === "string" ? errObj.code : "BAD_REQUEST";
+  const code = typeof errObj.code === "string" ? errObj.code : isZod ? "VALIDATION_ERROR" : "BAD_REQUEST";
   const errors = Array.isArray(errObj.errors) ? errObj.errors : Array.isArray(errObj.issues) ? errObj.issues : [];
 
   return res.status(status).json({
