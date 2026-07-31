@@ -250,7 +250,7 @@ export function CustomersPage() {
         ["mobile", "Mobile", "tel"],
         ["email", "Email", "email"],
         ["password", "Password (for customer login)", "password"],
-        ["customerType", "Customer type", "select", ["Residential", "Commercial", "Industrial", "Agricultural", "Institutional"]],
+        ["customerType", "Customer type", "select", ["Admin", "Manager", "Sales Executive", "Installer", "Engineer", "Technician", "Residential Customer", "Commercial Customer", "Industrial"]],
         ["gstNumber", "GST number", "text"],
         ["consumerNumber", "Consumer number", "text"],
         ["provider", "Electricity provider", "text"],
