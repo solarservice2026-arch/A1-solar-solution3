@@ -163,8 +163,7 @@ export function quotationDocument(row: RecordValue) {
 
   <div class="page-break"></div>
 
-  <img class="hero" src="${esc(header)}" alt="A1 Solar Solution Header Banner">
-  <div class="doc-header cols-3">
+  <div class="doc-header cols-3" style="margin-top:8mm">
     <div class="mini-brand">A1 SOLAR<br>SOLUTION</div>
     <div class="doc-title"><h1>QUOTATION</h1><b>Terms &amp; Conditions</b></div>
     <div class="meta">Valid Until<b>${esc(row.valid_until)}</b></div>
@@ -293,8 +292,7 @@ export function agreementDocument(row: RecordValue) {
 
 <!-- PAGE 1 -->
 <div class="page">
-  <img class="hero" src="${esc(header)}" alt="A1 Solar Solution Header Banner">
-  <div class="doc-header cols-3">
+  <div class="doc-header cols-3" style="margin-top:6mm">
     <div class="mini-brand">A1 SOLAR<br>SOLUTION</div>
     <div class="doc-title"><h1>AGREEMENT</h1><b>Grid Connected Rooftop Solar Installation</b></div>
     <div class="meta">Date<b>${esc(displayDate)}</b></div>
@@ -325,8 +323,7 @@ export function agreementDocument(row: RecordValue) {
 
 <!-- PAGE 2 -->
 <div class="page">
-  <img class="hero" src="${esc(header)}" alt="A1 Solar Solution Header Banner">
-  <div class="doc-header cols-3">
+  <div class="doc-header cols-3" style="margin-top:6mm">
     <div class="mini-brand">A1 SOLAR<br>SOLUTION</div>
     <div class="doc-title"><h1>AGREEMENT</h1><b>Vendor Obligations &amp; Standards</b></div>
     <div class="meta">Ref #<b>${esc(row.agreement_number)}</b></div>
@@ -352,8 +349,7 @@ export function agreementDocument(row: RecordValue) {
 
 <!-- PAGE 3 – Signatures -->
 <div class="page">
-  <img class="hero" src="${esc(header)}" alt="A1 Solar Solution Header Banner">
-  <div class="doc-header cols-3">
+  <div class="doc-header cols-3" style="margin-top:6mm">
     <div class="mini-brand">A1 SOLAR<br>SOLUTION</div>
     <div class="doc-title"><h1>AGREEMENT</h1><b>Signatures &amp; Declaration</b></div>
     <div class="meta">Date<b>${esc(displayDate)}</b></div>
