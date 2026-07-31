@@ -256,6 +256,7 @@ export function ProductsPage() {
       description="Maintain solar products, pricing and tax information."
       path="/products"
       permission="products:create"
+      deletePermission="products:delete"
       icon={<Package />}
       columns={[
         ["sku", "SKU"],
@@ -388,12 +389,16 @@ export function ProjectsPage() {
     }
   };
   const download = async (row: Row) => {
+    const newTab = window.open("about:blank", "_blank");
+    if (!newTab) return toast.error("Allow pop-ups to view document");
     const { data, error } = await supabase.storage
       .from("private-documents")
       .createSignedUrl(text(row.storage_path), 60);
-    if (error || !data?.signedUrl)
+    if (error || !data?.signedUrl) {
+      newTab.close();
       return toast.error(error?.message ?? "Download failed");
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    }
+    newTab.location.href = data.signedUrl;
   };
   return (
     <main className="app-page">

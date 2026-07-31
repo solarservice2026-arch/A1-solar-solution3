@@ -27,12 +27,10 @@ import {
   AgreementsPage,
   CustomersPage,
   InvoicesPage,
-  LeadsPage,
   ProductsPage,
   ProfilePage,
   ProjectsPage,
   QuotationsPage,
-  ReportsPage,
   SettingsPage,
   TicketsPage,
   WorkspaceNotFound,
@@ -464,9 +462,6 @@ export function App() {
         <Route path="/app" element={<AppShell />}>
           <Route index element={<Dashboard />} />
           <Route path="profile" element={<ProfilePage />} />
-          <Route element={<ProtectedRoute permission="leads:view" />}>
-            <Route path="leads" element={<LeadsPage />} />
-          </Route>
           <Route element={<ProtectedRoute permission="customers:view" />}>
             <Route path="customers" element={<CustomersPage />} />
           </Route>
@@ -487,9 +482,6 @@ export function App() {
           </Route>
           <Route element={<ProtectedRoute permission="agreements:view" />}>
             <Route path="agreements" element={<AgreementsPage />} />
-          </Route>
-          <Route element={<ProtectedRoute permission="reports:view" />}>
-            <Route path="reports" element={<ReportsPage />} />
           </Route>
           <Route element={<ProtectedRoute permission="settings:view" />}>
             <Route path="settings" element={<SettingsPage />} />

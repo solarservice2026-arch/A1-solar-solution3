@@ -370,6 +370,27 @@ productsRouter.post(
     return success(res.status(201), "Product created", data);
   }),
 );
+productsRouter.delete(
+  "/:id",
+  requirePermission("products:delete"),
+  asyncHandler(async (req, res) => {
+    const { error } = await db()
+      .from("products")
+      .delete()
+      .eq("id", req.params.id);
+    if (error) {
+      if (error.code === "23503") {
+        throw new AppError(
+          409,
+          "Product has linked business records and cannot be deleted",
+          "DATABASE_ERROR",
+        );
+      }
+      throw new AppError(400, error.message, "DATABASE_ERROR");
+    }
+    return success(res, "Product deleted", null);
+  }),
+);
 
 export const projectsRouter = Router();
 projectsRouter.use(requireAuth);

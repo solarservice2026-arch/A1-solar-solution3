@@ -29,7 +29,6 @@ const items = [
     icon: LayoutDashboard,
     permission: "dashboard:view",
   },
-  { to: "/app/leads", label: "Leads", icon: Users, permission: "leads:view" },
   {
     to: "/app/customers",
     label: "Customers",
@@ -71,12 +70,6 @@ const items = [
     label: "Agreements",
     icon: FileText,
     permission: "agreements:view",
-  },
-  {
-    to: "/app/reports",
-    label: "Reports",
-    icon: BarChart3,
-    permission: "reports:view",
   },
   { to: "/app/staff", label: "Staff", icon: Users, permission: "users:view" },
   {
