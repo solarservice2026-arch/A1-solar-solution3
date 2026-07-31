@@ -134,7 +134,8 @@ export async function api<T>(
 
       if (attempt === 0 && transientStatuses.has(response.status)) {
         if (response.status === 401) token = await sessionToken(true);
-        await new Promise((resolve) => window.setTimeout(resolve, 300));
+        // Render.com free tier cold-starts in ~30s; give it time before fallback
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
         continue;
       }
 
