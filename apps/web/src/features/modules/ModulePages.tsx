@@ -1874,6 +1874,18 @@ export function AgreementsPage() {
       );
     }
   };
+  const executeTestPayment = async (row: Row) => {
+    if (!confirm(`Complete test payment for ${text(row.agreement_number)}?`)) return;
+    try {
+      await api(`/agreements/${text(row.id)}/test-payment`, { method: "POST" });
+      toast.success("Test payment successful! Agreement download unlocked.");
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Test payment failed",
+      );
+    }
+  };
   const verifyPayment = async (row: Row) => {
     if (!confirm(`Verify payment for ${text(row.agreement_number)}?`)) return;
     try {
@@ -1908,9 +1920,7 @@ export function AgreementsPage() {
           <span className="kicker">DOCUMENTS</span>
           <h1>Agreements</h1>
           <p>
-            {isCustomer
-              ? "View and download your agreements."
-              : "Create and print versioned customer agreements."}
+            Review customer agreements, digital signatures and payment status
           </p>
         </div>
         {canCreate && (
@@ -2039,6 +2049,15 @@ export function AgreementsPage() {
                       {(!isCustomer || row.payment_status === "Paid") && (
                         <button onClick={() => void openAgreement(row)}>
                           {isCustomer ? "Download PDF" : "Print / PDF"}
+                        </button>
+                      )}
+                      {row.payment_status !== "Paid" && (
+                        <button
+                          type="button"
+                          style={{ background: "#059669", color: "#fff", border: "none" }}
+                          onClick={() => void executeTestPayment(row)}
+                        >
+                          💳 Test Payment
                         </button>
                       )}
                       {isCustomer && row.payment_status !== "Paid" && (

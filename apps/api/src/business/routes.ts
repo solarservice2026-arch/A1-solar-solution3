@@ -766,6 +766,23 @@ quotationsRouter.get(
   "/",
   requirePermission("quotations:view"),
   asyncHandler(async (req, res) => {
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const items = await mongo.collection("quotations").find({ status: { $ne: "Archived" } }).sort({ created_at: -1 }).toArray();
+      const customers = await mongo.collection("customers").find().toArray();
+      const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
+      const formatted = items.map((q) => {
+        const c = customerMap.get(String(q.customer_id));
+        return {
+          id: q._id.toString(),
+          ...q,
+          customers: c ? { name: c.name, mobile: c.mobile } : { name: q.customer_name || "Customer", mobile: "" },
+          quotation_items: q.quotation_items || q.items || [],
+        };
+      });
+      return success(res, "Quotations retrieved", formatted);
+    }
+
     let q = db()
       .from("quotations")
       .select(
@@ -845,6 +862,43 @@ quotationsRouter.post(
         0,
       ),
       discount = Math.max(0, Number(b.discount || 0));
+
+    const mongo = await getMongoDb();
+    if (mongo) {
+      let customerName = "Customer";
+      try {
+        const { ObjectId } = await import("mongodb");
+        const cDoc = await mongo.collection("customers").findOne({ _id: new ObjectId(b.customerId) });
+        if (cDoc) customerName = cDoc.name;
+      } catch {
+        const cDoc = await mongo.collection("customers").findOne({ customer_number: b.customerId });
+        if (cDoc) customerName = cDoc.name;
+      }
+
+      const qDoc = {
+        quotation_number: number("QUO"),
+        customer_id: b.customerId,
+        customer_name: customerName,
+        quotation_date: b.quotationDate || new Date().toISOString().slice(0, 10),
+        valid_until: b.validUntil,
+        capacity_kw: Number(b.capacityKw),
+        quotation_type: b.quotationType,
+        title: b.title,
+        installation_address: b.installationAddress || null,
+        subtotal,
+        discount,
+        tax,
+        grand_total: subtotal - discount,
+        terms: b.terms || null,
+        status: "Draft",
+        quotation_items: normalized,
+        created_at: new Date(),
+      };
+      const result = await mongo.collection("quotations").insertOne(qDoc);
+      const createdQuotation = { id: result.insertedId.toString(), ...qDoc, customers: { name: customerName } };
+      return success(res.status(201), "Quotation created", createdQuotation);
+    }
+
     const admin = db();
     const { data, error } = await admin
       .from("quotations")
@@ -887,6 +941,17 @@ quotationsRouter.delete(
   "/:id",
   requirePermission("quotations:delete"),
   asyncHandler(async (req, res) => {
+    const idStr = String(req.params.id);
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const { ObjectId } = await import("mongodb");
+      try {
+        await mongo.collection("quotations").updateOne({ _id: new ObjectId(idStr) }, { $set: { status: "Archived" } });
+      } catch {
+        await mongo.collection("quotations").updateOne({ quotation_number: idStr }, { $set: { status: "Archived" } });
+      }
+      return success(res, "Quotation deleted", { id: idStr });
+    }
     const { data, error } = await db()
       .from("quotations")
       .update({ status: "Archived", updated_at: new Date().toISOString() })
@@ -1071,6 +1136,22 @@ agreementsRouter.get(
   "/",
   requirePermission("agreements:view"),
   asyncHandler(async (req, res) => {
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const items = await mongo.collection("agreements").find().sort({ created_at: -1 }).toArray();
+      const customers = await mongo.collection("customers").find().toArray();
+      const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
+      const formatted = items.map((a) => {
+        const c = customerMap.get(String(a.customer_id));
+        return {
+          id: a._id.toString(),
+          ...a,
+          customers: c ? { name: c.name, mobile: c.mobile } : { name: a.customer_name || "Customer" },
+        };
+      });
+      return success(res, "Agreements retrieved", formatted);
+    }
+
     let q = db()
       .from("agreements")
       .select(
@@ -1101,10 +1182,53 @@ agreementsRouter.get(
     return success(res, "Agreements retrieved", result);
   }),
 );
+agreementsRouter.post(
+  "/:id/test-payment",
+  asyncHandler(async (req, res) => {
+    const idStr = String(req.params.id);
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const { ObjectId } = await import("mongodb");
+      let filter: any = { agreement_number: idStr };
+      try {
+        if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
+      } catch {}
+      await mongo.collection("agreements").updateOne(filter, {
+        $set: { payment_status: "Paid", paid_at: new Date().toISOString() }
+      });
+      return success(res, "Test payment completed successfully", { paid: true });
+    }
+
+    const { error } = await db()
+      .from("agreements")
+      .update({ payment_status: "Paid", paid_at: new Date().toISOString() })
+      .eq("id", idStr);
+    if (error) throw new AppError(500, error.message, "DATABASE_ERROR");
+    return success(res, "Test payment completed successfully", { paid: true });
+  }),
+);
 agreementsRouter.get(
   "/:id/document",
   requirePermission("agreements:view"),
   asyncHandler(async (req, res) => {
+    const idStr = String(req.params.id);
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const { ObjectId } = await import("mongodb");
+      let filter: any = { agreement_number: idStr };
+      try {
+        if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
+      } catch {}
+      const agreement = await mongo.collection("agreements").findOne(filter);
+      if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+      const c = await mongo.collection("customers").findOne({ _id: agreement.customer_id });
+      return success(res, "Agreement document retrieved", {
+        id: agreement._id.toString(),
+        ...agreement,
+        customers: c ? { name: c.name, mobile: c.mobile } : { name: agreement.customer_name || "Customer" },
+      });
+    }
+
     let query = db()
       .from("agreements")
       .select(
