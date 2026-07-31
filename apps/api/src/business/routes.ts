@@ -1,5 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
+import mongoose from "mongoose";
 import { createClient } from "@supabase/supabase-js";
 import { asyncHandler, AppError, success } from "../lib/http.js";
 import {
@@ -7,6 +8,13 @@ import {
   requireAuth,
   requirePermission,
 } from "../auth/middleware.js";
+
+const getMongoDb = () => {
+  if (process.env.MONGODB_URI && mongoose.connection.readyState === 1) {
+    return mongoose.connection.db;
+  }
+  return null;
+};
 
 const db = () => {
   const url = process.env.SUPABASE_URL,
@@ -143,6 +151,24 @@ customersRouter.get(
   "/",
   requirePermission("customers:view"),
   asyncHandler(async (req, res) => {
+    const mongo = getMongoDb();
+    if (mongo) {
+      let query: any = {};
+      if (req.query.search) {
+        const s = String(req.query.search).trim();
+        query = {
+          $or: [
+            { name: { $regex: s, $options: "i" } },
+            { mobile: { $regex: s, $options: "i" } },
+            { customer_number: { $regex: s, $options: "i" } },
+          ],
+        };
+      }
+      const items = await mongo.collection("customers").find(query).sort({ created_at: -1 }).toArray();
+      const formatted = items.map((item) => ({ id: item._id.toString(), ...item }));
+      return success(res, "Customers retrieved", formatted);
+    }
+
     let q = db()
       .from("customers")
       .select("*")
@@ -168,6 +194,42 @@ customersRouter.post(
         "Name, mobile and customer type are required",
         "VALIDATION_ERROR",
       );
+
+    const mongo = getMongoDb();
+    if (mongo) {
+      const doc = {
+        customer_number: number("CUS"),
+        name: b.name,
+        mobile: b.mobile,
+        email: b.email || null,
+        customer_type: b.customerType || "Residential",
+        gst_number: b.gstNumber || null,
+        consumer_number: b.consumerNumber || null,
+        provider: b.provider || null,
+        status: "Active",
+        created_at: new Date(),
+      };
+      const result = await mongo.collection("customers").insertOne(doc);
+      const createdCustomer = { id: result.insertedId.toString(), ...doc };
+
+      if (b.email) {
+        await mongo.collection("users").updateOne(
+          { email: b.email.trim().toLowerCase() },
+          {
+            $setOnInsert: {
+              name: b.name,
+              email: b.email.trim().toLowerCase(),
+              role: "customer",
+              status: "Active",
+              created_at: new Date(),
+            },
+          },
+          { upsert: true },
+        );
+      }
+
+      return success(res.status(201), "Customer created", createdCustomer);
+    }
 
     const client = db();
     let profileId: string | null = null;
@@ -306,6 +368,18 @@ customersRouter.delete(
   "/:id",
   requirePermission("customers:delete"),
   asyncHandler(async (req, res) => {
+    const idStr = String(req.params.id);
+    const mongo = getMongoDb();
+    if (mongo) {
+      const { ObjectId } = await import("mongodb");
+      try {
+        await mongo.collection("customers").deleteOne({ _id: new ObjectId(idStr) });
+      } catch {
+        await mongo.collection("customers").deleteOne({ customer_number: idStr });
+      }
+      return success(res, "Customer deleted", { id: idStr });
+    }
+
     const { error } = await db()
       .from("customers")
       .delete()
