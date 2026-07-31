@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import mongoose from "mongoose";
 import { createClient } from "@supabase/supabase-js";
 import { asyncHandler, AppError, success } from "../lib/http.js";
+import { connectMongoDB } from "../lib/mongoose.js";
 import {
   requireAnyPermission,
   requireAuth,
@@ -10,16 +11,14 @@ import {
 } from "../auth/middleware.js";
 
 const getMongoDb = async () => {
-  if (process.env.MONGODB_URI) {
-    if (mongoose.connection.readyState !== 1) {
-      try {
-        const { connectMongoDB } = await import("../lib/mongoose.js");
-        await connectMongoDB();
-      } catch {}
-    }
-    if (mongoose.connection.readyState === 1) {
+  if (!process.env.MONGODB_URI) return null;
+  try {
+    await connectMongoDB();
+    if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
       return mongoose.connection.db;
     }
+  } catch (err) {
+    console.error("[getMongoDb] Failed to connect:", err);
   }
   return null;
 };
