@@ -25,7 +25,7 @@ const sessionToken = async (refresh = false) => {
 
 const getLocalStorageFallback = <T>(path: string, options: RequestInit): T => {
   const method = (options.method || "GET").toUpperCase();
-  const rawPath = path.split("?")[0];
+  const rawPath = path.split("?")[0] ?? "";
   const parts = rawPath.split("/").filter(Boolean);
   
   const entity = parts[0] || "items";
@@ -121,7 +121,8 @@ export async function api<T>(
 
       if (response.ok && body.data !== undefined && body.data !== null) {
         if ((options.method || "GET").toUpperCase() === "GET" && Array.isArray(body.data)) {
-          const entity = path.split("?")[0].split("/").filter(Boolean)[0];
+          const rawPath = path.split("?")[0] ?? "";
+          const entity = rawPath.split("/").filter(Boolean)[0];
           if (entity) {
             try {
               localStorage.setItem(`a1_db_cache_${entity}`, JSON.stringify(body.data));
