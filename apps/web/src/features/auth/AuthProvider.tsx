@@ -69,10 +69,10 @@ const createTestUser = (email: string): CurrentUser => {
   return {
     id: "00000000-0000-0000-0000-000000000001",
     email: norm,
-    fullName: "Super Admin",
+    fullName: "Customer",
     active: true,
-    roles: ["super_admin", "admin"],
-    permissions: fullPermissions,
+    roles: ["customer"],
+    permissions: ["agreements:view", "payments:create"],
   };
 };
 
