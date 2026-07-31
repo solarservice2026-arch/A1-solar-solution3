@@ -1141,9 +1141,16 @@ agreementsRouter.get(
       let filter = {};
       const isCustomer = req.auth!.roles.includes("customer");
       if (isCustomer) {
-        const custObj = await mongo.collection("customers").findOne({ email: req.auth!.email.trim().toLowerCase() });
+        const custObj = await mongo.collection("customers").findOne({
+          email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
+        });
         if (custObj) {
-          filter = { customer_id: custObj._id };
+          filter = {
+            $or: [
+              { customer_id: custObj._id },
+              { customer_id: custObj._id.toString() }
+            ]
+          };
         } else {
           return success(res, "Agreements retrieved", []);
         }
@@ -1298,20 +1305,51 @@ agreementsRouter.post(
   asyncHandler(async (req, res) => {
     if (!req.auth!.roles.includes("customer"))
       throw new AppError(403, "Customer checkout only", "FORBIDDEN");
-    const cid = await customerId(req.auth!.userId);
-    const { data: agreement } = await db()
-      .from("agreements")
-      .select(
-        "id,agreement_number,payment_amount,payment_status,customers(name,mobile,email)",
-      )
-      .eq("id", req.params.id)
-      .eq("customer_id", cid ?? "00000000-0000-0000-0000-000000000000")
-      .maybeSingle();
-    if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+    const mongo = await getMongoDb();
+    let agreement: any = null;
+    let customer: any = null;
+    let cid: string | null = null;
+
+    if (mongo) {
+      const { ObjectId } = await import("mongodb");
+      const custObj = await mongo.collection("customers").findOne({
+        email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
+      });
+      if (!custObj) throw new AppError(404, "Customer profile not found", "NOT_FOUND");
+      
+      const agreementIdStr = String(req.params.id);
+      let filter: any = { customer_id: custObj._id };
+      try {
+        if (agreementIdStr.length === 24) {
+          filter = { _id: new ObjectId(agreementIdStr), customer_id: custObj._id };
+        } else {
+          filter = { agreement_number: agreementIdStr, customer_id: custObj._id };
+        }
+      } catch {}
+
+      agreement = await mongo.collection("agreements").findOne(filter);
+      if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+      customer = custObj;
+      cid = custObj._id.toString();
+    } else {
+      cid = await customerId(req.auth!.userId);
+      const { data } = await db()
+        .from("agreements")
+        .select(
+          "id,agreement_number,payment_amount,payment_status,customers(name,mobile,email)",
+        )
+        .eq("id", req.params.id)
+        .eq("customer_id", cid ?? "00000000-0000-0000-0000-000000000000")
+        .maybeSingle();
+      if (!data) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+      agreement = data;
+      customer = data.customers;
+    }
+
     if (agreement.payment_status === "Paid")
       throw new AppError(409, "Agreement is already paid", "ALREADY_PAID");
     const config = payuConfig(),
-      customer = agreement.customers as unknown as {
+      custInfo = customer as unknown as {
         name: string;
         mobile: string;
         email: string | null;
@@ -1319,9 +1357,9 @@ agreementsRouter.post(
       txnid = `AGR${Date.now()}${crypto.randomBytes(3).toString("hex")}`,
       amount = Number(agreement.payment_amount).toFixed(2),
       productinfo = `Agreement ${agreement.agreement_number}`,
-      firstname = String(customer.name || "Customer").slice(0, 60),
-      email = customer.email || req.auth!.email,
-      udf1 = agreement.id,
+      firstname = String(custInfo.name || "Customer").slice(0, 60),
+      email = custInfo.email || req.auth!.email,
+      udf1 = agreement.id || agreement._id.toString(),
       hash = sha512(
         `${config.key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${udf1}||||||||||${config.salt}`,
       ),
@@ -1330,23 +1368,51 @@ agreementsRouter.post(
         "https://a1-solor-solution.vercel.app/api/v1",
       ),
       callback = `${publicApi}/payments/payu/callback`;
-    const { error } = await db().from("agreement_payment_requests").upsert(
-      {
-        agreement_id: agreement.id,
-        customer_id: cid,
-        amount,
-        method: "PayU",
-        transaction_reference: txnid,
-        status: "Initiated",
-        submitted_at: new Date().toISOString(),
-      },
-      { onConflict: "agreement_id" },
-    );
-    if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-    await db()
-      .from("agreements")
-      .update({ payment_status: "Payment Initiated" })
-      .eq("id", agreement.id);
+
+    if (mongo) {
+      await mongo.collection("agreement_payment_requests").replaceOne(
+        { agreement_id: udf1 },
+        {
+          agreement_id: udf1,
+          customer_id: cid,
+          amount,
+          method: "PayU",
+          transaction_reference: txnid,
+          status: "Initiated",
+          submitted_at: new Date(),
+        },
+        { upsert: true }
+      );
+      const { ObjectId } = await import("mongodb");
+      let agreementFilter = {};
+      try {
+        agreementFilter = { _id: new ObjectId(udf1) };
+      } catch {
+        agreementFilter = { agreement_number: udf1 };
+      }
+      await mongo.collection("agreements").updateOne(
+        agreementFilter,
+        { $set: { payment_status: "Payment Initiated" } }
+      );
+    } else {
+      const { error } = await db().from("agreement_payment_requests").upsert(
+        {
+          agreement_id: agreement.id,
+          customer_id: cid,
+          amount,
+          method: "PayU",
+          transaction_reference: txnid,
+          status: "Initiated",
+          submitted_at: new Date().toISOString(),
+        },
+        { onConflict: "agreement_id" },
+      );
+      if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
+      await db()
+        .from("agreements")
+        .update({ payment_status: "Payment Initiated" })
+        .eq("id", agreement.id);
+    }
     return success(res, "PayU checkout initialized", {
       action: config.paymentUrl,
       fields: {
@@ -1356,7 +1422,7 @@ agreementsRouter.post(
         productinfo,
         firstname,
         email,
-        phone: customer.mobile,
+        phone: custInfo.mobile,
         udf1,
         surl: callback,
         furl: callback,
@@ -1369,11 +1435,64 @@ agreementsRouter.post(
   "/:id/payment-request",
   requirePermission("payments:create"),
   asyncHandler(async (req, res) => {
-    if (!req.auth!.roles.includes("customer"))
-      throw new AppError(403, "Customer payment request only", "FORBIDDEN");
-    const cid = await customerId(req.auth!.userId),
-      transactionReference = String(req.body.transactionReference ?? "").trim(),
+    const mongo = await getMongoDb();
+    const transactionReference = String(req.body.transactionReference ?? "").trim(),
       method = String(req.body.method ?? "").trim();
+
+    if (mongo) {
+      const { ObjectId } = await import("mongodb");
+      const custObj = await mongo.collection("customers").findOne({
+        email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
+      });
+      if (!custObj) throw new AppError(404, "Customer profile not found", "NOT_FOUND");
+      
+      const agreementIdStr = String(req.params.id);
+      let filter: any = { customer_id: custObj._id };
+      try {
+        if (agreementIdStr.length === 24) {
+          filter = { _id: new ObjectId(agreementIdStr), customer_id: custObj._id };
+        } else {
+          filter = { agreement_number: agreementIdStr, customer_id: custObj._id };
+        }
+      } catch {}
+
+      const agreement = await mongo.collection("agreements").findOne(filter);
+      if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+      if (agreement.payment_status === "Paid")
+        return success(res, "Agreement payment already verified", agreement);
+
+      if (!transactionReference || !method)
+        throw new AppError(
+          400,
+          "Payment method and transaction reference are required",
+          "VALIDATION_ERROR",
+        );
+
+      const requestDoc = {
+        agreement_id: agreement._id.toString(),
+        customer_id: custObj._id.toString(),
+        amount: agreement.payment_amount,
+        method,
+        transaction_reference: transactionReference,
+        status: "Pending",
+        submitted_at: new Date(),
+      };
+
+      await mongo.collection("agreement_payment_requests").replaceOne(
+        { agreement_id: agreement._id.toString() },
+        requestDoc,
+        { upsert: true }
+      );
+
+      await mongo.collection("agreements").updateOne(
+        { _id: agreement._id },
+        { $set: { payment_status: "Pending Verification" } }
+      );
+
+      return success(res.status(201), "Payment submitted for verification", requestDoc);
+    }
+
+    const cid = await customerId(req.auth!.userId);
     if (!cid || !transactionReference || !method)
       throw new AppError(
         400,
@@ -1443,11 +1562,20 @@ export const payuCallback = asyncHandler(async (req, res) => {
     )
   )
     return redirect("failed");
-  const { data: request } = await db()
-    .from("agreement_payment_requests")
-    .select("id,agreement_id,amount,transaction_reference")
-    .eq("transaction_reference", txnid)
-    .maybeSingle();
+  const mongo = await getMongoDb();
+  let request: any = null;
+  if (mongo) {
+    request = await mongo.collection("agreement_payment_requests").findOne({
+      transaction_reference: txnid,
+    });
+  } else {
+    const { data } = await db()
+      .from("agreement_payment_requests")
+      .select("id,agreement_id,amount,transaction_reference")
+      .eq("transaction_reference", txnid)
+      .maybeSingle();
+    request = data;
+  }
   if (
     !request ||
     Number(request.amount).toFixed(2) !== Number(body.amount).toFixed(2)
@@ -1477,21 +1605,46 @@ export const payuCallback = asyncHandler(async (req, res) => {
     verified?.status !== "success" ||
     Number(verified.amount).toFixed(2) !== Number(request.amount).toFixed(2)
   ) {
-    await db()
-      .from("agreement_payment_requests")
-      .update({ status: "Failed" })
-      .eq("id", request.id);
+    if (mongo) {
+      await mongo.collection("agreement_payment_requests").updateOne(
+        { _id: request._id },
+        { $set: { status: "Failed" } }
+      );
+    } else {
+      await db()
+        .from("agreement_payment_requests")
+        .update({ status: "Failed" })
+        .eq("id", request.id);
+    }
     return redirect("failed");
   }
-  const admin = db();
-  await admin
-    .from("agreement_payment_requests")
-    .update({ status: "Verified", verified_at: new Date().toISOString() })
-    .eq("id", request.id);
-  await admin
-    .from("agreements")
-    .update({ payment_status: "Paid", paid_at: new Date().toISOString() })
-    .eq("id", request.agreement_id);
+  if (mongo) {
+    await mongo.collection("agreement_payment_requests").updateOne(
+      { _id: request._id },
+      { $set: { status: "Verified", verified_at: new Date() } }
+    );
+    const { ObjectId } = await import("mongodb");
+    let agreementFilter = {};
+    try {
+      agreementFilter = { _id: new ObjectId(request.agreement_id) };
+    } catch {
+      agreementFilter = { agreement_number: request.agreement_id };
+    }
+    await mongo.collection("agreements").updateOne(
+      agreementFilter,
+      { $set: { payment_status: "Paid", paid_at: new Date() } }
+    );
+  } else {
+    const admin = db();
+    await admin
+      .from("agreement_payment_requests")
+      .update({ status: "Verified", verified_at: new Date().toISOString() })
+      .eq("id", request.id);
+    await admin
+      .from("agreements")
+      .update({ payment_status: "Paid", paid_at: new Date().toISOString() })
+      .eq("id", request.agreement_id);
+  }
   return redirect("success");
 });
 agreementsRouter.post(
@@ -1504,6 +1657,41 @@ agreementsRouter.post(
         "Payment verification is restricted",
         "FORBIDDEN",
       );
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const request = await mongo.collection("agreement_payment_requests").findOne({
+        agreement_id: req.params.id,
+        status: "Pending",
+      });
+      if (!request)
+        throw new AppError(404, "Pending payment request not found", "NOT_FOUND");
+
+      await mongo.collection("agreement_payment_requests").updateOne(
+        { _id: request._id },
+        {
+          $set: {
+            status: "Verified",
+            verified_by: req.auth!.userId,
+            verified_at: new Date(),
+          },
+        }
+      );
+
+      const { ObjectId } = await import("mongodb");
+      let agreementFilter = {};
+      try {
+        agreementFilter = { _id: new ObjectId(String(req.params.id)) };
+      } catch {
+        agreementFilter = { agreement_number: String(req.params.id) };
+      }
+      await mongo.collection("agreements").updateOne(
+        agreementFilter,
+        { $set: { payment_status: "Paid", paid_at: new Date() } }
+      );
+
+      return success(res, "Agreement payment verified", { paid: true });
+    }
+
     const { data: request } = await db()
       .from("agreement_payment_requests")
       .select("*")
