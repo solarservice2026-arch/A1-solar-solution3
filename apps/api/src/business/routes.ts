@@ -9,9 +9,17 @@ import {
   requirePermission,
 } from "../auth/middleware.js";
 
-const getMongoDb = () => {
-  if (process.env.MONGODB_URI && mongoose.connection.readyState === 1) {
-    return mongoose.connection.db;
+const getMongoDb = async () => {
+  if (process.env.MONGODB_URI) {
+    if (mongoose.connection.readyState !== 1) {
+      try {
+        const { connectMongoDB } = await import("../lib/mongoose.js");
+        await connectMongoDB();
+      } catch {}
+    }
+    if (mongoose.connection.readyState === 1) {
+      return mongoose.connection.db;
+    }
   }
   return null;
 };
@@ -151,7 +159,7 @@ customersRouter.get(
   "/",
   requirePermission("customers:view"),
   asyncHandler(async (req, res) => {
-    const mongo = getMongoDb();
+    const mongo = await getMongoDb();
     if (mongo) {
       let query: any = {};
       if (req.query.search) {
@@ -195,7 +203,7 @@ customersRouter.post(
         "VALIDATION_ERROR",
       );
 
-    const mongo = getMongoDb();
+    const mongo = await getMongoDb();
     if (mongo) {
       const doc = {
         customer_number: number("CUS"),
@@ -362,7 +370,7 @@ customersRouter.delete(
   requirePermission("customers:delete"),
   asyncHandler(async (req, res) => {
     const idStr = String(req.params.id);
-    const mongo = getMongoDb();
+    const mongo = await getMongoDb();
     if (mongo) {
       const { ObjectId } = await import("mongodb");
       try {

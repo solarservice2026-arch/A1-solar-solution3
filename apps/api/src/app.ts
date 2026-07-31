@@ -97,6 +97,14 @@ app.use(
   }),
 );
 app.use(morgan("combined", { skip: () => process.env.NODE_ENV === "test" }));
+app.use(async (_req, _res, next) => {
+  if (process.env.MONGODB_URI && mongoose.connection.readyState !== 1) {
+    try {
+      await connectMongoDB();
+    } catch {}
+  }
+  next();
+});
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/users", usersRouter);
 app.use("/api/v1/staff", usersRouter);
