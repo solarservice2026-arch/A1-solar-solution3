@@ -12,6 +12,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { enquirySchema, paginationSchema } from "@a1/validation";
 import { AppError } from "./lib/http.js";
+import { connectMongoDB } from "./lib/mongoose.js";
 import { authRouter, rolesRouter, usersRouter } from "./auth/routes.js";
 import {
   agreementsRouter,
@@ -25,6 +26,7 @@ import {
   quotationsRouter,
   ticketsRouter,
 } from "./business/routes.js";
+import mongoose from "mongoose";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -113,12 +115,25 @@ app.use("/api/v1/profile", profileRouter);
 const ok = (res: Response, message: string, data: unknown, meta: object = {}) =>
   res.json({ success: true, message, data, meta });
 
-app.get("/api/v1/health", (_req, res) =>
-  ok(res, "API is healthy", {
+app.get("/api/v1/health", async (_req, res) => {
+  let mongoStatus = "disconnected";
+  try {
+    if (process.env.MONGODB_URI) {
+      await connectMongoDB();
+      mongoStatus = mongoose.connection.readyState === 1 ? "connected" : "connecting";
+    }
+  } catch (err) {
+    mongoStatus = `error: ${(err as Error).message}`;
+  }
+  return ok(res, "API is healthy", {
     status: "ok",
+    database: {
+      mongodb: mongoStatus,
+      supabase: Boolean(process.env.SUPABASE_URL),
+    },
     timestamp: new Date().toISOString(),
-  }),
-);
+  });
+});
 app.get("/api/v1/public/settings", (_req, res) =>
   ok(res, "Public settings", {
     companyName: process.env.COMPANY_NAME ?? "A1 Solar Solution",

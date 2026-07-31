@@ -19,6 +19,7 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   DATABASE_URL: z.string().url().optional(),
   DIRECT_URL: z.string().url().optional(),
+  MONGODB_URI: z.string().optional(),
   VITE_SUPABASE_URL: z.string().url().optional(),
   VITE_SUPABASE_ANON_KEY: z.string().min(1).optional()
 }).superRefine((value,ctx)=>{
