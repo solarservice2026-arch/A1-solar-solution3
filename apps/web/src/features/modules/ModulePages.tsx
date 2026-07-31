@@ -1813,7 +1813,16 @@ export function AgreementsPage() {
   const openAgreement = async (row: Row) => {
     try {
       const document = await api<Row>(`/agreements/${text(row.id)}/document`);
-      printRecord("Agreement", document);
+      // Generate a temporary signed URL for the customer signature image
+      const sigPath = text(document.customer_signature_path);
+      let customerSignatureUrl: string | undefined;
+      if (sigPath && sigPath !== "—" && sigPath !== "") {
+        const { data: signedData } = await supabase.storage
+          .from("private-documents")
+          .createSignedUrl(sigPath, 300); // valid for 5 minutes
+        if (signedData?.signedUrl) customerSignatureUrl = signedData.signedUrl;
+      }
+      printRecord("Agreement", { ...document, customer_signature_url: customerSignatureUrl });
     } catch (error) {
       toast.error(
         error instanceof Error
