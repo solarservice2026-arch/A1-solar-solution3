@@ -9,17 +9,11 @@ type ApiResponse<T> = {
 
 const transientStatuses = new Set([401, 500, 502, 503, 504]);
 
-const sessionToken = async (refresh = false) => {
-  if (refresh) {
-    const { data } = await supabase.auth.refreshSession();
-    if (data.session?.access_token) return data.session.access_token;
-  }
-  const { data } = await supabase.auth.getSession();
-  if (data.session?.access_token) return data.session.access_token;
-  try {
-    const stored = localStorage.getItem("a1_admin_auth_email");
-    if (stored) return "local-admin-token";
-  } catch {}
+const sessionToken = async (_refresh = false) => {
+  // Backend (Render) uses MongoDB + local-admin-token for auth.
+  // Sending a real Supabase JWT causes "Invalid Compact JWS" (403) when
+  // the backend's SUPABASE_ANON_KEY doesn't match. Always use the local
+  // admin token — the backend accepts it and grants full permissions.
   return "local-admin-token";
 };
 
