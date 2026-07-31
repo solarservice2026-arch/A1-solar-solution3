@@ -2,7 +2,6 @@ import { BarChart3, FileText, Package, Settings, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { api } from "../../lib/api";
-import { supabase } from "../../lib/supabase";
 import { useAuth } from "../auth/AuthProvider";
 import {
   agreementDocument,
@@ -371,12 +370,13 @@ export function ProjectsPage() {
   const upload = async (projectId: string, file: File) => {
     if (file.size > 10 * 1024 * 1024)
       return toast.error("Document must be under 10 MB");
-    const storagePath = `${user!.id}/projects/${projectId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-    const { error } = await supabase.storage
-      .from("private-documents")
-      .upload(storagePath, file, { contentType: file.type });
-    if (error) return toast.error(error.message);
     try {
+      const storagePath = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read document file"));
+        reader.readAsDataURL(file);
+      });
       await api(`/projects/${projectId}/documents`, {
         method: "POST",
         body: JSON.stringify({
@@ -390,7 +390,6 @@ export function ProjectsPage() {
       toast.success("Installation document uploaded");
       await loadDocuments(projectId);
     } catch (registrationError) {
-      await supabase.storage.from("private-documents").remove([storagePath]);
       toast.error(
         registrationError instanceof Error
           ? registrationError.message
@@ -401,14 +400,13 @@ export function ProjectsPage() {
   const download = async (row: Row) => {
     const newTab = window.open("about:blank", "_blank");
     if (!newTab) return toast.error("Allow pop-ups to view document");
-    const { data, error } = await supabase.storage
-      .from("private-documents")
-      .createSignedUrl(text(row.storage_path), 60);
-    if (error || !data?.signedUrl) {
+    const path = text(row.storage_path);
+    if (path.startsWith("data:") || path.startsWith("http")) {
+      newTab.location.href = path;
+    } else {
       newTab.close();
-      return toast.error(error?.message ?? "Download failed");
+      toast.error("Document cannot be opened");
     }
-    newTab.location.href = data.signedUrl;
   };
   return (
     <main className="app-page">
@@ -1791,8 +1789,7 @@ export function AgreementsPage() {
         !["image/jpeg", "image/png", "image/webp"].includes(file.type)
       )
         return toast.error("Signature must be JPG, PNG or WebP and under 2 MB");
-      // Convert to base64 Data URI so it always renders in the PDF,
-      // regardless of Supabase storage bucket permissions.
+      // Convert to base64 Data URI so it always renders in the PDF.
       customerSignaturePath = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -1829,15 +1826,8 @@ export function AgreementsPage() {
       const sigPath = text(document.customer_signature_path);
       let customerSignatureUrl: string | undefined;
       if (sigPath && sigPath !== "—" && sigPath !== "") {
-        // If stored as base64 Data URI or an absolute URL, use directly
         if (sigPath.startsWith("data:image/") || sigPath.startsWith("http")) {
           customerSignatureUrl = sigPath;
-        } else {
-          // Fallback: try Supabase signed URL for old records
-          const { data: signedData } = await supabase.storage
-            .from("private-documents")
-            .createSignedUrl(sigPath, 300);
-          if (signedData?.signedUrl) customerSignatureUrl = signedData.signedUrl;
         }
       }
       printRecord("Agreement", { ...document, customer_signature_url: customerSignatureUrl });

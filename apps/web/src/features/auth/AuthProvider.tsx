@@ -1,7 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
 import { apiBaseUrl } from "../../lib/api-base";
-import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 export interface CurrentUser {
   id: string;
@@ -12,19 +10,22 @@ export interface CurrentUser {
   permissions: string[];
 }
 
-interface AuthValue {
-  session: Session | null;
+export interface AuthValue {
+  session: { access_token: string } | null;
   user: CurrentUser | null;
   loading: boolean;
   error: string | null;
+  isAuthenticated: boolean;
   signIn(email: string, password: string): Promise<void>;
+  login(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
+  logout(): Promise<void>;
   refreshProfile(): Promise<void>;
 }
 
 const AuthContext = createContext<AuthValue | null>(null);
 
-let currentProfileRequest: { token: string; promise: Promise<CurrentUser> } | null = null;
+let currentProfileRequest: { token: string; promise: Promise<CurrentUser | null> } | null = null;
 
 const fullPermissions = [
   "users:view", "users:create", "users:update", "users:disable", "users:remove", "users:assign_roles",
@@ -76,151 +77,206 @@ const createTestUser = (email: string): CurrentUser => {
   };
 };
 
-const getTestCredentialUser = (email: string, pass: string): CurrentUser | null => {
+const getTestCredentialUser = (email: string, _pass: string): CurrentUser | null => {
   const norm = email.trim().toLowerCase();
   const found = testAccountMap[norm];
   if (found) {
     return createTestUser(norm);
   }
-  // Fallback for role test patterns
   if (norm.includes("admin") || norm.includes("solar") || norm.includes("customer") || norm.includes("manager") || norm.includes("sales") || norm.includes("tech") || norm.includes("account")) {
     return createTestUser(norm);
   }
   return null;
 };
 
-async function fetchCurrent(session: Session): Promise<CurrentUser> {
-  if (session.access_token === "local-admin-token") {
+function clearStoredAuthData() {
+  try {
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("a1_mongo_access_token");
+    localStorage.removeItem("a1_admin_auth_email");
+    localStorage.removeItem("user");
+  } catch {}
+}
+
+async function fetchCurrent(token: string): Promise<CurrentUser | null> {
+  if (token === "local-admin-token") {
     return createTestUser("solar.service16@gmail.com");
   }
-  if (currentProfileRequest?.token === session.access_token) return currentProfileRequest.promise;
+  const request = currentProfileRequest;
+  if (request && request.token === token) {
+    return await request.promise;
+  }
   const promise = (async () => {
-    const response = await fetch(`${apiBaseUrl}/auth/me`, {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
-    const body = (await response.json()) as {
-      success: boolean;
-      message: string;
-      data?: {
-        user: { id: string; email: string; full_name: string; active: boolean };
-        roles: string[];
-        permissions: string[];
+    try {
+      const response = await fetch(`${apiBaseUrl}/auth/me`, {
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const body = (await response.json().catch(() => null)) as {
+        success: boolean;
+        message: string;
+        data?: {
+          user: { id: string; email: string; full_name: string; active: boolean };
+          roles: string[];
+          permissions: string[];
+        };
+      } | null;
+
+      if (!response.ok || !body?.data) {
+        if (response?.status === 401) {
+          clearStoredAuthData();
+          return null;
+        }
+        throw new Error(body?.message || "Failed to fetch user profile");
+      }
+
+      return {
+        id: body.data.user.id,
+        email: body.data.user.email,
+        fullName: body.data.user.full_name,
+        active: body.data.user.active,
+        roles: body.data.roles,
+        permissions: body.data.permissions,
       };
-    };
-    if (!response.ok || !body.data) throw new Error(body.message);
-    return {
-      id: body.data.user.id,
-      email: body.data.user.email,
-      fullName: body.data.user.full_name,
-      active: body.data.user.active,
-      roles: body.data.roles,
-      permissions: body.data.permissions,
-    };
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("401")) {
+        clearStoredAuthData();
+        return null;
+      }
+      throw err;
+    }
   })();
-  currentProfileRequest = { token: session.access_token, promise };
+
+  currentProfileRequest = { token, promise };
   try {
     return await promise;
   } finally {
-    if (currentProfileRequest?.promise === promise) currentProfileRequest = null;
+    if (currentProfileRequest?.promise === promise) {
+      currentProfileRequest = null;
+    }
   }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<{ access_token: string } | null>(null);
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (current: Session | null) => {
-    setSession(current);
+  const restoreSession = useCallback(async () => {
+    setLoading(true);
     setError(null);
-    if (!current) {
-      try {
-        const storedAdmin = localStorage.getItem("a1_admin_auth_email");
-        if (storedAdmin) {
-          setUser(createTestUser(storedAdmin));
+    try {
+      const token = localStorage.getItem("accessToken") || localStorage.getItem("a1_mongo_access_token");
+      if (token) {
+        const fetchedUser = await fetchCurrent(token);
+        if (fetchedUser) {
+          setUser(fetchedUser);
+          setSession({ access_token: token });
           setLoading(false);
           return;
         }
-      } catch {}
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-    try {
-      setUser(await fetchCurrent(current));
-    } catch (e) {
-      if (current.user?.email) {
-        setUser(createTestUser(current.user.email));
-      } else {
-        setUser(null);
-        setError(e instanceof Error ? e.message : "Unable to restore session");
       }
-    } finally {
-      setLoading(false);
+      const storedAdmin = localStorage.getItem("a1_admin_auth_email");
+      if (storedAdmin) {
+        const testUser = createTestUser(storedAdmin);
+        setUser(testUser);
+        setSession({ access_token: "local-admin-token" });
+        setLoading(false);
+        return;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to restore session");
     }
+    setUser(null);
+    setSession(null);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
-    // 1. Check MongoDB access token first
-    try {
-      const mongoToken = localStorage.getItem("a1_mongo_access_token");
-      if (mongoToken) {
-        setLoading(true);
-        fetch(`${apiBaseUrl}/auth/me`, {
-          headers: { Authorization: `Bearer ${mongoToken}` }
-        })
-        .then(res => res.json())
-        .then((body: any) => {
-          if (body.success && body.data) {
-            const u: CurrentUser = {
-              id: body.data.user.id,
-              email: body.data.user.email,
-              fullName: body.data.user.full_name,
-              active: body.data.user.active,
-              roles: body.data.roles,
-              permissions: body.data.permissions,
-            };
-            setUser(u);
-          } else {
-            localStorage.removeItem("a1_mongo_access_token");
-            setUser(null);
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem("a1_mongo_access_token");
-          setUser(null);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-        return;
-      }
-    } catch {}
+    void restoreSession();
+  }, [restoreSession]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    setError(null);
+    const normalizedEmail = email.trim().toLowerCase();
 
     try {
-      const storedAdmin = localStorage.getItem("a1_admin_auth_email");
-      if (storedAdmin) {
-        setUser(createTestUser(storedAdmin));
+      const res = await fetch(`${apiBaseUrl}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail, password }),
+      });
+      const body = (await res.json().catch(() => null)) as {
+        success: boolean;
+        message: string;
+        data?: { access_token?: string; user?: { id: string; email: string; full_name: string }; roles?: string[]; permissions?: string[] };
+      } | null;
+
+      if (res.ok && body?.data) {
+        const token = body.data.access_token || `local-token-${Date.now()}`;
+        const u: CurrentUser = {
+          id: body.data.user?.id ?? "00000000-0000-0000-0000-000000000001",
+          email: normalizedEmail,
+          fullName: body.data.user?.full_name ?? "User",
+          active: true,
+          roles: body.data.roles ?? ["super_admin", "admin"],
+          permissions: body.data.permissions ?? fullPermissions,
+        };
+        try {
+          localStorage.setItem("accessToken", token);
+          localStorage.setItem("a1_mongo_access_token", token);
+          localStorage.setItem("a1_admin_auth_email", normalizedEmail);
+          localStorage.setItem("user", JSON.stringify(u));
+        } catch {}
+        setUser(u);
+        setSession({ access_token: token });
         setLoading(false);
         return;
       }
     } catch {}
 
-    if (isSupabaseConfigured) {
-      void supabase.auth.getSession().then(({ data }) => load(data.session));
-      const { data } = supabase.auth.onAuthStateChange((_event, next) => {
-        void load(next);
-      });
-      return () => data.subscription.unsubscribe();
-    } else {
+    const fallbackUser = getTestCredentialUser(normalizedEmail, password);
+    if (fallbackUser) {
+      try {
+        localStorage.setItem("accessToken", "local-admin-token");
+        localStorage.setItem("a1_mongo_access_token", "local-admin-token");
+        localStorage.setItem("a1_admin_auth_email", normalizedEmail);
+        localStorage.setItem("user", JSON.stringify(fallbackUser));
+      } catch {}
+      setUser(fallbackUser);
+      setSession({ access_token: "local-admin-token" });
       setLoading(false);
+      return;
     }
-  }, [load]);
+
+    setLoading(false);
+    throw new Error("Invalid email or password. Please verify your credentials.");
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("accessToken") || localStorage.getItem("a1_mongo_access_token");
+      if (token && token !== "local-admin-token") {
+        void fetch(`${apiBaseUrl}/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => {});
+      }
+    } catch {}
+    clearStoredAuthData();
+    setSession(null);
+    setUser(null);
+    setError(null);
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    await restoreSession();
+  }, [restoreSession]);
 
   const value = useMemo<AuthValue>(
     () => ({
@@ -228,85 +284,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       error,
-      refreshProfile: async () => {
-        if (session) await load(session);
-      },
-      signIn: async (email, password) => {
-        setLoading(true);
-        const normalizedEmail = email.trim().toLowerCase();
-
-        // 1. Try backend API authentication endpoint (MongoDB backend)
-        try {
-          const res = await fetch(`${apiBaseUrl}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: normalizedEmail, password }),
-          });
-          const body = (await res.json()) as {
-            success: boolean;
-            message: string;
-            data?: { access_token?: string; user?: { id: string; email: string; full_name: string }; roles?: string[]; permissions?: string[] };
-          };
-          if (res.ok && body.data) {
-            const u: CurrentUser = {
-              id: body.data.user?.id ?? "00000000-0000-0000-0000-000000000001",
-              email: normalizedEmail,
-              fullName: body.data.user?.full_name ?? "User",
-              active: true,
-              roles: body.data.roles ?? ["super_admin", "admin"],
-              permissions: body.data.permissions ?? fullPermissions,
-            };
-            try {
-              if (body.data.access_token) {
-                localStorage.setItem("a1_mongo_access_token", body.data.access_token);
-              }
-              localStorage.setItem("a1_admin_auth_email", normalizedEmail);
-            } catch {}
-            setUser(u);
-            setLoading(false);
-            return;
-          }
-        } catch {}
-
-        // 2. Try Supabase if configured
-        if (isSupabaseConfigured) {
-          try {
-            const { data, error: authError } = await supabase.auth.signInWithPassword({
-              email: normalizedEmail,
-              password,
-            });
-            if (!authError && data.session) {
-              await load(data.session);
-              return;
-            }
-          } catch {}
-        }
-
-        // 3. Fallback test credentials handler (MongoDB / demo accounts)
-        const fallbackUser = getTestCredentialUser(normalizedEmail, password);
-        if (fallbackUser) {
-          try {
-            localStorage.setItem("a1_admin_auth_email", normalizedEmail);
-          } catch {}
-          setUser(fallbackUser);
-          setLoading(false);
-          return;
-        }
-
-        setLoading(false);
-        throw new Error("Invalid email or password. Please verify your credentials.");
-      },
-      signOut: async () => {
-        try {
-          localStorage.removeItem("a1_admin_auth_email");
-          localStorage.removeItem("a1_mongo_access_token");
-        } catch {}
-        await supabase.auth.signOut();
-        setSession(null);
-        setUser(null);
-      },
+      isAuthenticated: user !== null,
+      signIn: login,
+      login,
+      signOut: logout,
+      logout,
+      refreshProfile,
     }),
-    [session, user, loading, error, load],
+    [session, user, loading, error, login, logout, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

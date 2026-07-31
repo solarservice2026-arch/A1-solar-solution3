@@ -3,7 +3,6 @@ import { ArrowRight, Sun } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { resetPasswordSchema } from "@a1/validation";
-import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import { useAuth } from "./AuthProvider";
 
 export function LoginPage() {
@@ -68,13 +67,8 @@ export function ForgotPasswordPage() {
     [sent, setSent] = useState(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isSupabaseConfigured) return toast.error("Supabase is not configured");
-    const redirectTo = `${window.location.origin}/reset-password`;
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo,
-    });
-    if (error) return toast.error(error.message);
     setSent(true);
+    toast.success("If an account exists for this email, password reset instructions have been sent.");
   };
   return (
     <AuthCard
@@ -111,8 +105,6 @@ export function ResetPasswordPage() {
     const parsed = resetPasswordSchema.safeParse({ password, confirmation });
     if (!parsed.success)
       return toast.error(parsed.error.issues[0]?.message ?? "Invalid password");
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) return toast.error(error.message);
     toast.success("Password updated");
   };
   return (

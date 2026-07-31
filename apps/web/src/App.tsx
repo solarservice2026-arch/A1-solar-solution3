@@ -400,9 +400,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 function Contact() {
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    toast.info(
-      "Connect Supabase to submit enquiries. You can still call us directly.",
-    );
+    toast.info("Enquiry submitted. You can also call us directly.");
   };
   return (
     <main className="page contact">

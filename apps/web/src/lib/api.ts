@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import axios from "axios";
 import { apiBaseUrl } from "./api-base";
 
 type ApiResponse<T> = {
@@ -7,16 +7,48 @@ type ApiResponse<T> = {
   data: T;
 };
 
+const baseURL = import.meta.env.VITE_API_URL?.trim() || apiBaseUrl;
+
+export const axiosClient = axios.create({
+  baseURL,
+  withCredentials: true,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+axiosClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem("accessToken") || localStorage.getItem("a1_mongo_access_token");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
+axiosClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("a1_mongo_access_token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("a1_admin_auth_email");
+    }
+
+    return Promise.reject(error);
+  },
+);
+
 const transientStatuses = new Set([401, 500, 502, 503, 504]);
 
 const sessionToken = async (_refresh = false) => {
   try {
-    const mongoToken = localStorage.getItem("a1_mongo_access_token");
-    if (mongoToken) return mongoToken;
+    const token = localStorage.getItem("accessToken") || localStorage.getItem("a1_mongo_access_token");
+    if (token) return token;
   } catch {}
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) return session.access_token;
   try {
     const email = localStorage.getItem("a1_admin_auth_email");
     if (email) return `local-admin-token:${email}`;
