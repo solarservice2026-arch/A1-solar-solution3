@@ -260,34 +260,27 @@ customersRouter.post(
         userId = createdUser.user.id;
       } else if (
         authErr?.message?.includes("already registered") ||
-        authErr?.message?.includes("already exists")
+        authErr?.message?.includes("already exists") ||
+        authErr?.message?.toLowerCase().includes("already")
       ) {
-        const { data: existingProfiles } = await client
-          .from("profiles")
-          .select("id")
-          .eq("phone", b.mobile)
-          .limit(1);
-
-        if (existingProfiles && existingProfiles.length > 0) {
-          const existingProfile = existingProfiles[0];
-
-          const existingUserId = existingProfile?.id;
-          if (!existingUserId) {
-            throw new AppError(
-              400,
-              "Unable to resolve existing user profile",
-              "USER_PROFILE_NOT_FOUND",
-            );
+        const { data: usersList } = await client.auth.admin.listUsers();
+        const existingUser = usersList?.users?.find(
+          (u) => u.email?.toLowerCase() === email.toLowerCase(),
+        );
+        if (existingUser) {
+          userId = existingUser.id;
+          if (password) {
+            await client.auth.admin.updateUserById(existingUser.id, { password });
           }
-
-          userId = existingUserId;
-          await client.auth.admin.updateUserById(existingUserId, { password });
         } else {
-          throw new AppError(
-            400,
-            "An account with this email address already exists",
-            "EMAIL_EXISTS",
-          );
+          const { data: existingProfiles } = await client
+            .from("profiles")
+            .select("id")
+            .eq("phone", b.mobile)
+            .limit(1);
+          if (existingProfiles && existingProfiles[0]?.id) {
+            userId = existingProfiles[0].id;
+          }
         }
       } else if (authErr) {
         throw new AppError(400, authErr.message, "USER_CREATION_FAILED");
