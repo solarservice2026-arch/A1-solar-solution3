@@ -51,7 +51,7 @@ function DataPage({
   path: string;
   permission: string;
   columns: Array<[string, string, ((v: unknown) => string)?]>;
-  fields?: Array<[string, string, string]>;
+  fields?: Array<[string, string, string, string[]?]>;
   icon: React.ReactNode;
   printable?: boolean;
   deletePermission?: string;
@@ -129,25 +129,35 @@ function DataPage({
       </div>
       {open && fields && (
         <form className="card operational-form" onSubmit={submit}>
-          {fields.map(([name, label, type]) => (
+          {fields.map(([name, label, type, options]) => (
             <label key={name}>
               {label}
-              <input
-                name={name}
-                type={type}
-                placeholder={type === "password" ? "Set login password for customer" : undefined}
-                required={
-                  ![
-                    "email",
-                    "password",
-                    "gstNumber",
-                    "consumerNumber",
-                    "provider",
-                    "brand",
-                    "model",
-                  ].includes(name)
-                }
-              />
+              {type === "select" && options ? (
+                <select name={name} required>
+                  {options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  name={name}
+                  type={type}
+                  placeholder={type === "password" ? "Set login password for customer" : undefined}
+                  required={
+                    ![
+                      "email",
+                      "password",
+                      "gstNumber",
+                      "consumerNumber",
+                      "provider",
+                      "brand",
+                      "model",
+                    ].includes(name)
+                  }
+                />
+              )}
             </label>
           ))}
           <button className="primary">Save</button>
@@ -240,7 +250,7 @@ export function CustomersPage() {
         ["mobile", "Mobile", "tel"],
         ["email", "Email", "email"],
         ["password", "Password (for customer login)", "password"],
-        ["customerType", "Customer type", "text"],
+        ["customerType", "Customer type", "select", ["Residential", "Commercial", "Industrial", "Agricultural", "Institutional"]],
         ["gstNumber", "GST number", "text"],
         ["consumerNumber", "Consumer number", "text"],
         ["provider", "Electricity provider", "text"],
