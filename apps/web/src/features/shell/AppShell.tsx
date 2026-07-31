@@ -105,10 +105,32 @@ export function AppShell() {
     }
   }, [user, location.pathname, navigate]);
 
-  const allowed = (permission: string) =>
-    user?.roles.includes("super_admin") ||
-    user?.roles.includes("admin") ||
-    user?.permissions.includes(permission);
+  const allowed = (permission: string, to: string) => {
+    if (!user) return false;
+    if (user.roles.includes("super_admin") || user.roles.includes("admin")) {
+      return true;
+    }
+    if (user.roles.includes("installation_staff")) {
+      return to === "/app" || to === "/app/projects" || to === "/app/profile";
+    }
+    if (user.roles.includes("service_technician")) {
+      return to === "/app" || to === "/app/tickets" || to === "/app/profile";
+    }
+    if (user.roles.includes("accountant")) {
+      return (
+        to === "/app" ||
+        to === "/app/customers" ||
+        to === "/app/quotations" ||
+        to === "/app/agreements" ||
+        to === "/app/invoices" ||
+        to === "/app/profile"
+      );
+    }
+    if (user.roles.includes("customer")) {
+      return to === "/app/agreements" || to === "/app/profile";
+    }
+    return user.permissions.includes(permission);
+  };
   const crumb =
     items.find((i) => i.to === location.pathname)?.label ?? "Workspace";
   return (
@@ -125,7 +147,7 @@ export function AppShell() {
         </div>
         <nav>
           {items
-            .filter((i) => allowed(i.permission))
+            .filter((i) => allowed(i.permission, i.to))
             .map(({ to, label, icon: Icon }) => (
               <NavLink
                 end={to === "/app"}
