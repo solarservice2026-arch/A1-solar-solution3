@@ -1791,11 +1791,14 @@ export function AgreementsPage() {
         !["image/jpeg", "image/png", "image/webp"].includes(file.type)
       )
         return toast.error("Signature must be JPG, PNG or WebP and under 2 MB");
-      customerSignaturePath = `${user!.id}/agreements/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error } = await supabase.storage
-        .from("private-documents")
-        .upload(customerSignaturePath, file, { contentType: file.type });
-      if (error) return toast.error(error.message);
+      // Convert to base64 Data URI so it always renders in the PDF,
+      // regardless of Supabase storage bucket permissions.
+      customerSignaturePath = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Failed to read signature file"));
+        reader.readAsDataURL(file);
+      });
     }
     try {
       const payload = {
@@ -1823,14 +1826,19 @@ export function AgreementsPage() {
   const openAgreement = async (row: Row) => {
     try {
       const document = await api<Row>(`/agreements/${text(row.id)}/document`);
-      // Generate a temporary signed URL for the customer signature image
       const sigPath = text(document.customer_signature_path);
       let customerSignatureUrl: string | undefined;
       if (sigPath && sigPath !== "—" && sigPath !== "") {
-        const { data: signedData } = await supabase.storage
-          .from("private-documents")
-          .createSignedUrl(sigPath, 300); // valid for 5 minutes
-        if (signedData?.signedUrl) customerSignatureUrl = signedData.signedUrl;
+        // If stored as base64 Data URI or an absolute URL, use directly
+        if (sigPath.startsWith("data:image/") || sigPath.startsWith("http")) {
+          customerSignatureUrl = sigPath;
+        } else {
+          // Fallback: try Supabase signed URL for old records
+          const { data: signedData } = await supabase.storage
+            .from("private-documents")
+            .createSignedUrl(sigPath, 300);
+          if (signedData?.signedUrl) customerSignatureUrl = signedData.signedUrl;
+        }
       }
       printRecord("Agreement", { ...document, customer_signature_url: customerSignatureUrl });
     } catch (error) {
