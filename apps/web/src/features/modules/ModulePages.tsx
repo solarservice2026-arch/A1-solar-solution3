@@ -2035,6 +2035,7 @@ export function AgreementsPage() {
                   </td>
                   <td data-label="Address">
                     {text(
+                      (row.consumer_address as string | undefined) ??
                       (row.merged_data as Row | undefined)?.consumer_address,
                     )}
                   </td>

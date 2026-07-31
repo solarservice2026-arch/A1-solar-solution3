@@ -1497,133 +1497,79 @@ agreementsRouter.post(
       const b = req.body,
         isCustomer = req.auth!.roles.includes("customer");
       if (isCustomer)
-        throw new AppError(
-          403,
-          "Customers can only view and download their agreements",
-          "FORBIDDEN",
-        );
-      let agreementCustomerId = String(b.customerId ?? "");
-      if (isCustomer) {
-        agreementCustomerId = (await customerId(req.auth!.userId)) ?? "";
-        if (!agreementCustomerId)
-          throw new AppError(
-            409,
-            "Customer account is not linked to a customer record",
-            "CUSTOMER_PROFILE_NOT_LINKED",
-          );
-        const { data: ownedQuote } = await db()
-          .from("quotations")
-          .select("id")
-          .eq("id", b.quotationId)
-          .eq("customer_id", agreementCustomerId)
-          .maybeSingle();
-        if (!ownedQuote)
-          throw new AppError(
-            403,
-            "You can create an agreement only for your own quotation",
-            "FORBIDDEN",
-          );
-      }
+        throw new AppError(403, "Customers can only view and download their agreements", "FORBIDDEN");
+
+      const agreementCustomerId = String(b.customerId ?? "");
       if (!agreementCustomerId || !b.consumerAddress || !b.agreementDate)
-        throw new AppError(
-          400,
-          "Customer, address and agreement date are required",
-          "VALIDATION_ERROR",
-        );
+        throw new AppError(400, "Customer, address and agreement date are required", "VALIDATION_ERROR");
+
+      // ── MongoDB path (primary) ──────────────────────────────────────────
+      const mongo = await getMongoDb();
+      if (mongo) {
+        const { ObjectId } = await import("mongodb");
+        // Resolve customer name
+        let customerName = "Customer";
+        let customObjId: any = null;
+        try {
+          customObjId = new ObjectId(agreementCustomerId);
+          const cust = await mongo.collection("customers").findOne({ _id: customObjId });
+          if (cust) customerName = String(cust.name ?? "Customer");
+        } catch { /* id may not be ObjectId */ }
+
+        // Find related quotation
+        let quotationId: any = null;
+        if (b.quotationId && String(b.quotationId).trim() !== "") {
+          try {
+            quotationId = new ObjectId(String(b.quotationId));
+          } catch { quotationId = b.quotationId; }
+        }
+
+        const today = new Date();
+        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
+        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+        const agreementNumber = `AGR-${dateStr}-${rand}`;
+
+        const doc: Record<string, any> = {
+          agreement_number: agreementNumber,
+          customer_id: customObjId ?? agreementCustomerId,
+          customer_name: customerName,
+          quotation_id: quotationId,
+          status: "Draft",
+          payment_status: "Unpaid",
+          payment_amount: 1,
+          consumer_address: b.consumerAddress,
+          customer_signature_path: b.customerSignaturePath || null,
+          merged_data: {
+            consumer_address: b.consumerAddress,
+            agreement_date: b.agreementDate,
+            payment_terms: b.paymentTerms || null,
+          },
+          created_at: today.toISOString(),
+          updated_at: today.toISOString(),
+        };
+        const result = await mongo.collection("agreements").insertOne(doc);
+        return success(res.status(201), "Agreement draft created", {
+          ...doc,
+          id: result.insertedId.toString(),
+          _id: result.insertedId.toString(),
+          customers: { name: customerName },
+        });
+      }
+
+      // ── Supabase fallback path ──────────────────────────────────────────
       const admin = db();
       let validQuotationId: string | null = null;
       if (b.quotationId && String(b.quotationId).trim() !== "") {
         const { data: selectedQuote } = await admin
-          .from("quotations")
-          .select("id,customer_id")
-          .eq("id", b.quotationId)
-          .maybeSingle();
-        if (
-          selectedQuote &&
-          String(selectedQuote.customer_id) === String(agreementCustomerId)
-        ) {
+          .from("quotations").select("id,customer_id").eq("id", b.quotationId).maybeSingle();
+        if (selectedQuote && String(selectedQuote.customer_id) === String(agreementCustomerId))
           validQuotationId = selectedQuote.id;
-        }
       }
       if (!validQuotationId) {
         const { data: latestQuote } = await admin
-          .from("quotations")
-          .select("id")
-          .eq("customer_id", agreementCustomerId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .from("quotations").select("id").eq("customer_id", agreementCustomerId)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
         if (latestQuote) validQuotationId = latestQuote.id;
-      }
-      const { data: foundTemplate, error: templateError } = await admin
-        .from("agreement_templates")
-        .select("id,version")
-        .eq("active", true)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (templateError) {
-        console.error("Agreement template fetch error:", templateError);
-        throw new AppError(500, templateError.message, "DATABASE_ERROR");
-      }
-      let template: { id: string; version: number } | null = foundTemplate;
-      if (!template) {
-        const { data: newTemplate, error: createError } = await admin
-          .from("agreement_templates")
-          .insert({
-            name: "PM Surya Ghar Consumer Vendor Agreement",
-            scheme_name: "PM Surya Ghar: Muft Bijli Yojana",
-            version: 1,
-            body: {
-              title:
-                "Agreement between Consumer and Vendor for installation of a grid-connected rooftop solar project",
-              sections: [
-                "Consumer and vendor identification",
-                "Project purpose",
-                "Consumer responsibilities",
-                "Vendor responsibilities",
-                "Site survey and feasibility",
-                "Design and engineering",
-                "Procurement and supply",
-                "Installation and documentation",
-                "Warranty and maintenance",
-                "Grid connectivity",
-                "Subsidy documentation",
-                "Plant performance",
-                "Payment and disputes",
-                "Signatures and disclaimer",
-              ],
-            },
-            active: true,
-          })
-          .select("id,version")
-          .single();
-        if (createError) {
-          console.error("Agreement template create error:", createError);
-          throw new AppError(
-            500,
-            createError.message || "Failed to create default agreement template",
-            "TEMPLATE_NOT_CONFIGURED",
-          );
-        }
-        if (!newTemplate) {
-          throw new AppError(
-            409,
-            "No active agreement template is configured",
-            "TEMPLATE_NOT_CONFIGURED",
-          );
-        }
-        template = newTemplate;
-      }
-      const creatorId = req.auth?.userId;
-      let validCreatedBy: string | null = null;
-      if (creatorId) {
-        const { data: userProfile } = await admin
-          .from("profiles")
-          .select("id")
-          .eq("id", creatorId)
-          .maybeSingle();
-        if (userProfile) validCreatedBy = creatorId;
       }
       const { data, error } = await admin
         .from("agreements")
@@ -1631,7 +1577,6 @@ agreementsRouter.post(
           agreement_number: number("AGR"),
           customer_id: agreementCustomerId,
           quotation_id: validQuotationId,
-          template_id: template.id,
           status: "Draft",
           payment_status: "Unpaid",
           payment_amount: 1,
@@ -1640,29 +1585,17 @@ agreementsRouter.post(
             consumer_address: b.consumerAddress,
             agreement_date: b.agreementDate,
             payment_terms: b.paymentTerms || null,
-            template_version: template.version,
           },
-          created_by: validCreatedBy,
+          created_by: req.auth?.userId || null,
         })
         .select()
         .single();
-      if (error) {
-        console.error("Supabase insert agreement error:", JSON.stringify(error));
-        throw new AppError(
-          error.code === "23503" ? 422 : 400,
-          error.message || "Failed to insert agreement",
-          "DATABASE_ERROR",
-        );
-      }
+      if (error)
+        throw new AppError(error.code === "23503" ? 422 : 400, error.message || "Failed to insert agreement", "DATABASE_ERROR");
       return success(res.status(201), "Agreement draft created", data);
     } catch (err) {
-      console.error("Error creating agreement:", err);
       if (err instanceof AppError) throw err;
-      throw new AppError(
-        500,
-        err instanceof Error ? err.message : "Unable to create agreement",
-        "AGREEMENT_CREATION_FAILED",
-      );
+      throw new AppError(500, err instanceof Error ? err.message : "Unable to create agreement", "AGREEMENT_CREATION_FAILED");
     }
   }),
 );
