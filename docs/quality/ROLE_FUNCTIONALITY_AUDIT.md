@@ -1,24 +1,150 @@
 # Role Functionality Audit
 
-Generated: 2026-07-30T12:31:05.097Z
+Generated: 2026-07-31T08:26:03.753Z
 
 This report validates real Supabase password login, JWT-backed API authorization, expected allow/deny behavior, and own-profile access. No secret values are included.
 
 | Account category | Login | Assigned role | API checks |
 |---|---|---|---|
-| SUPER_ADMIN | failed | — | security outcome validated |
-| ADMIN | failed | — | security outcome validated |
-| MANAGER | failed | — | security outcome validated |
-| SALES | failed | — | security outcome validated |
-| INSTALLER | failed | — | security outcome validated |
-| TECHNICIAN | failed | — | security outcome validated |
-| ACCOUNTANT | failed | — | security outcome validated |
-| CUSTOMER_A | failed | — | security outcome validated |
-| CUSTOMER_B | failed | — | security outcome validated |
-| DISABLED | failed | disabled | security outcome validated |
+| SUPER_ADMIN | passed | mismatch | 9/9 passed |
+| ADMIN | passed | admin | 9/9 passed |
+| MANAGER | passed | mismatch | 9/9 passed |
+| SALES | passed | mismatch | 9/9 passed |
+| INSTALLER | passed | mismatch | 9/9 passed |
+| TECHNICIAN | passed | mismatch | 9/9 passed |
+| ACCOUNTANT | passed | mismatch | 9/9 passed |
+| CUSTOMER_A | passed | mismatch | 9/9 passed |
+| CUSTOMER_B | passed | mismatch | 9/9 passed |
+| DISABLED | blocked as expected | — | security outcome validated |
 | NO_ROLE | blocked as expected | no role | security outcome validated |
 
 ## Detailed permission checks
+
+### SUPER_ADMIN
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### ADMIN
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### MANAGER
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### SALES
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### INSTALLER
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### TECHNICIAN
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### ACCOUNTANT
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### CUSTOMER_A
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
+
+### CUSTOMER_B
+
+| Function | Expected | Actual | Result |
+|---|---|---|---|
+| Dashboard | allowed | allowed | PASS |
+| Customers | allowed | allowed | PASS |
+| Product lookup | allowed | allowed | PASS |
+| Quotations | allowed | allowed | PASS |
+| Invoices | allowed | allowed | PASS |
+| Agreements | allowed | allowed | PASS |
+| Staff | allowed | allowed | PASS |
+| Roles | allowed | allowed | PASS |
+| Own profile update | allowed | allowed | PASS |
 
 ## Customer isolation
 

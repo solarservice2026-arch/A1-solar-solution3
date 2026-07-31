@@ -169,6 +169,21 @@ export function AppShell() {
               <span>{user?.fullName ?? "Super Admin"}</span>
               <small>{(user?.roles ?? ["super_admin"]).join(", ").replaceAll("_", " ")}</small>
             </div>
+            <button
+              className="icon-button"
+              aria-label="Sign out"
+              onClick={() => void signOut()}
+              title="Sign out"
+              style={{
+                marginLeft: "12px",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </header>
         <Outlet />
