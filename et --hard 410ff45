@@ -1,0 +1,29 @@
+[33m8e5eadb[m fix: add frontend dependencies to web workspace
+[33m410ff45[m fix undefined existing profile
+[33mf8ff632[m UI: Replace mobile hamburger menu with login button
+[33m19aa1f7[m UI: Clean up unused Menu code from Header
+[33m14040b9[m UI: Restore mobile hamburger menu for screens < 768px
+[33mc7b8838[m UI: Add md:hidden class to menu button
+[33m1ee5e87[m credentials updated
+[33m5f73ac9[m feat: initialize App component with landing page, navigation, and solar savings calculator
+[33m9b27846[m feat: implement landing page layout and solar savings calculator component
+[33m80825ee[m feat: implement landing page and solar savings calculator in App component
+[33m7b672b0[m feat: initialize global CSS styles and responsive layout components
+[33md0105b6[m feat: implement home page, navigation layout, and solar savings calculator in App component
+[33m243fcca[m feat: implement landing page and solar savings calculator UI for public application
+[33m8066db8[m feat: implement landing page layout and core branding styles
+[33mdf5629c[m feat: implement core application shell, authentication providers, and landing page UI
+[33m086b5ea[m feat: implement generic DataPage component and specific modules for CRM, products, and projects
+[33m15baed2[m feat: add HTML templates for quotation and invoice generation
+[33m8421a2f[m feat: add PDF templates for quotations and invoices, setup auth routes, and initialize AuthProvider
+[33m377334a[m feat: implement authentication and user management routes including login, profile retrieval, and staff CRUD operations
+[33mb346a43[m feat: implement AuthProvider with Supabase integration and admin fallback support
+[33m2d40372[m feat: implement AuthProvider and authentication routes with Super Admin bypass support
+[33m601bc0e[m feat: implement ProtectedRoute component with role-based and permission-based access control
+[33m8736e45[m feat: implement generic DataPage component and specific modules for customers, products, and projects management
+[33m01c2bfa[m feat: implement Supabase auth provider and staff management UI components
+[33m85b8315[m feat: implement business module routes for dashboard, customer, and product management with Supabase integration
+[33m2c8cd52[m feat: implement resilient API client with Supabase auth integration and local storage fallback caching
+[33m1c7ed06[m feat: initialize express application with security middleware, cors, rate limiting, and api routes
+[33mb65df16[m feat: implement Supabase client configuration and core business route handlers
+[33m66eb4f0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: add routes and business logic for customers, products, and dashboard analytics
