@@ -217,8 +217,65 @@ customersRouter.post(
 
     const mongo = await getMongoDb();
     if (mongo) {
+      let profileId: string | null = null;
+      if (b.email && b.password) {
+        const email = String(b.email).trim().toLowerCase();
+        const password = String(b.password).trim();
+        if (password.length >= 6) {
+          try {
+            const client = db();
+            const { data: createdUser, error: authErr } =
+              await client.auth.admin.createUser({
+                email,
+                password,
+                email_confirm: true,
+                user_metadata: { full_name: b.name },
+              });
+
+            if (createdUser?.user) {
+              profileId = createdUser.user.id;
+              await client.from("profiles").upsert({
+                id: profileId,
+                full_name: b.name,
+                phone: b.mobile,
+                active: true,
+              });
+              const { data: customerRole } = await client
+                .from("roles")
+                .select("id")
+                .eq("name", "customer")
+                .single();
+              if (customerRole) {
+                await client.from("user_roles").upsert({
+                  user_id: profileId,
+                  role_id: customerRole.id,
+                });
+              }
+            } else if (
+              authErr?.message?.includes("already registered") ||
+              authErr?.message?.includes("already exists") ||
+              authErr?.message?.toLowerCase().includes("already")
+            ) {
+              const { data: usersList } = await client.auth.admin.listUsers();
+              const existingUser = usersList?.users?.find(
+                (u) => u.email?.toLowerCase() === email.toLowerCase(),
+              );
+              if (existingUser) {
+                profileId = existingUser.id;
+                await client.auth.admin.updateUserById(existingUser.id, {
+                  password,
+                });
+              }
+            }
+          } catch (e) {
+            console.error("Supabase user creation failed for mongo path:", e);
+          }
+        }
+      }
+
       const doc = {
         customer_number: number("CUS"),
+        profile_id: profileId,
         name: b.name,
         mobile: b.mobile,
         email: b.email || null,
@@ -242,6 +299,9 @@ customersRouter.post(
               role: "customer",
               status: "Active",
               created_at: new Date(),
+            },
+            $set: {
+              ...(profileId ? { profile_id: profileId } : {}),
             },
           },
           { upsert: true },
