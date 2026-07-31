@@ -113,6 +113,19 @@ dashboardRouter.get(
   "/",
   requirePermission("dashboard:view"),
   asyncHandler(async (req, res) => {
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const counts: Record<string, number> = {
+        leads: await mongo.collection("enquiries").countDocuments(),
+        customers: await mongo.collection("customers").countDocuments(),
+        quotations: await mongo.collection("quotations").countDocuments(),
+        invoices: await mongo.collection("agreements").countDocuments(),
+        products: await mongo.collection("products").countDocuments(),
+        staff: await mongo.collection("users").countDocuments(),
+      };
+      return success(res, "Dashboard retrieved", counts);
+    }
+
     const admin = db(),
       isCustomer = req.auth!.roles.includes("customer"),
       cid = isCustomer ? await customerId(req.auth!.userId) : null;
@@ -401,6 +414,24 @@ productsRouter.get(
   "/",
   requireAnyPermission("products:view", "quotations:create", "invoices:create"),
   asyncHandler(async (req, res) => {
+    const mongo = await getMongoDb();
+    if (mongo) {
+      let query: any = {};
+      if (req.query.search) {
+        const s = String(req.query.search).trim();
+        query = {
+          $or: [
+            { name: { $regex: s, $options: "i" } },
+            { sku: { $regex: s, $options: "i" } },
+            { brand: { $regex: s, $options: "i" } },
+          ],
+        };
+      }
+      const items = await mongo.collection("products").find(query).sort({ created_at: -1 }).toArray();
+      const formatted = items.map((item) => ({ id: item._id.toString(), ...item }));
+      return success(res, "Products retrieved", formatted);
+    }
+
     let q = db()
       .from("products")
       .select("*")
@@ -425,6 +456,27 @@ productsRouter.post(
         "SKU, name and category are required",
         "VALIDATION_ERROR",
       );
+
+    const mongo = await getMongoDb();
+    if (mongo) {
+      const doc = {
+        sku: b.sku,
+        name: b.name,
+        category: b.category,
+        brand: b.brand || null,
+        model: b.model || null,
+        unit: b.unit || "Nos",
+        purchase_price: Number(b.purchasePrice || 0),
+        selling_price: Number(b.sellingPrice || 0),
+        tax_rate: Number(b.taxRate || 0),
+        minimum_stock: Number(b.minimumStock || 0),
+        created_at: new Date(),
+      };
+      const result = await mongo.collection("products").insertOne(doc);
+      const createdProduct = { id: result.insertedId.toString(), ...doc };
+      return success(res.status(201), "Product created", createdProduct);
+    }
+
     const { data, error } = await db()
       .from("products")
       .insert({
