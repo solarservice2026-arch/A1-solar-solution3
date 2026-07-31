@@ -17,16 +17,46 @@ const fullPermissions = [
   "dashboard:view", "customers:view", "products:view", "projects:view", "tickets:view"
 ];
 
+const testAccountMap: Record<string, { fullName: string; roles: string[]; permissions: string[] }> = {
+  "solar.service16@gmail.com": { fullName: "Primary Super Admin", roles: ["super_admin", "admin"], permissions: fullPermissions },
+  "admin@admin.com": { fullName: "Ayush Admin", roles: ["admin"], permissions: fullPermissions },
+  "superadmin@a1solar.test": { fullName: "A1 Super Admin", roles: ["super_admin", "admin"], permissions: fullPermissions },
+  "admin@a1solar.test": { fullName: "A1 Solar Admin", roles: ["admin"], permissions: fullPermissions },
+  "manager@a1solar.test": { fullName: "Sales Manager", roles: ["manager"], permissions: ["business:view", "leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create", "quotations:update", "agreements:view", "invoices:view", "installations:view", "technicians:view"] },
+  "sales@a1solar.test": { fullName: "Sales Executive User", roles: ["sales_executive"], permissions: ["leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create"] },
+  "installer@a1solar.test": { fullName: "Installation Staff User", roles: ["installation_staff"], permissions: ["dashboard:view", "projects:view", "projects:update", "quotations:view", "agreements:view", "invoices:view"] },
+  "technician@a1solar.test": { fullName: "Service Technician User", roles: ["service_technician"], permissions: ["dashboard:view", "tickets:view", "tickets:update", "quotations:view", "agreements:view", "invoices:view"] },
+  "accounts@a1solar.test": { fullName: "Finance & Accounts User", roles: ["accountant"], permissions: ["dashboard:view", "customers:view", "quotations:view", "agreements:view", "invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
+  "customer@a1solar.test": { fullName: "Rohan Sharma (Customer)", roles: ["customer"], permissions: ["agreements:view", "invoices:view"] }
+};
+
 export class SupabaseAuthProvider implements AuthProvider {
   async resolve(accessToken: string): Promise<AuthContext | null> {
     try {
       if (!accessToken || accessToken === "local-admin-token" || accessToken.startsWith("local-admin")) {
+        let email = "solar.service16@gmail.com";
+        if (accessToken.startsWith("local-admin-token:")) {
+          email = accessToken.substring("local-admin-token:".length).trim().toLowerCase();
+        } else if (accessToken.startsWith("local-admin:")) {
+          email = accessToken.substring("local-admin:".length).trim().toLowerCase();
+        }
+        
+        const found = testAccountMap[email];
+        if (found) {
+          return {
+            userId: "00000000-0000-0000-0000-000000000001",
+            email,
+            active: true,
+            roles: found.roles as AppRole[],
+            permissions: found.permissions,
+          };
+        }
         return {
           userId: "00000000-0000-0000-0000-000000000001",
-          email: "solar.service16@gmail.com",
+          email,
           active: true,
-          roles: ["super_admin", "admin"],
-          permissions: fullPermissions,
+          roles: ["customer"],
+          permissions: ["agreements:view", "payments:create"],
         };
       }
 

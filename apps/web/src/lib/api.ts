@@ -11,7 +11,12 @@ const transientStatuses = new Set([401, 500, 502, 503, 504]);
 
 const sessionToken = async (_refresh = false) => {
   const { data: { session } } = await supabase.auth.getSession();
-  return session?.access_token || "local-admin-token";
+  if (session?.access_token) return session.access_token;
+  try {
+    const email = localStorage.getItem("a1_admin_auth_email");
+    if (email) return `local-admin-token:${email}`;
+  } catch {}
+  return "local-admin-token";
 };
 
 const getLocalStorageFallback = <T>(path: string, options: RequestInit): T => {
