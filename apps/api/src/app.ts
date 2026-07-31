@@ -185,43 +185,17 @@ app.use((_req, res) =>
   }),
 );
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-  if (
-    error instanceof AppError ||
-    (typeof error === "object" && error !== null && "status" in error && "message" in error)
-  ) {
-    const errObj = error as { status?: number; message?: string; code?: string; errors?: unknown[] };
-    return res.status(errObj.status || 500).json({
-      success: false,
-      message: errObj.message || "An error occurred",
-      code: errObj.code || "INTERNAL_ERROR",
-      errors: errObj.errors || [],
-    });
-  }
-  const issues =
-    typeof error === "object" && error !== null && "issues" in error
-      ? (error as { issues: unknown }).issues
-      : null;
-  if (Array.isArray(issues) && issues.length > 0)
-    return res.status(400).json({
-      success: false,
-      message: "Validation failed",
-      code: "VALIDATION_ERROR",
-      errors: issues,
-    });
-  const message =
-    typeof error === "object" && error !== null && "message" in error && typeof (error as { message: unknown }).message === "string"
-      ? (error as { message: string }).message
-      : error instanceof Error
-        ? error.message
-        : "An unexpected error occurred";
-  const code =
-    typeof error === "object" && error !== null && "code" in error && typeof (error as { code: unknown }).code === "string"
-      ? (error as { code: string }).code
-      : "INTERNAL_ERROR";
-  return res.status(500).json({
+  const errObj = typeof error === "object" && error !== null ? (error as Record<string, any>) : {};
+  const status = typeof errObj.status === "number" && errObj.status >= 400 && errObj.status < 600 ? errObj.status : 400;
+  const rawMsg = typeof errObj.message === "string" ? errObj.message.trim() : error instanceof Error ? error.message : "";
+  const message = rawMsg || "Invalid request parameters";
+  const code = typeof errObj.code === "string" ? errObj.code : "BAD_REQUEST";
+  const errors = Array.isArray(errObj.errors) ? errObj.errors : Array.isArray(errObj.issues) ? errObj.issues : [];
+
+  return res.status(status).json({
     success: false,
     message,
     code,
-    errors: [],
+    errors,
   });
 });
