@@ -1,12 +1,12 @@
 import type { NextFunction, Request, Response } from "express";
 import type { AppRole } from "@a1/validation";
 import { AppError } from "../lib/http.js";
-import { SupabaseAuthProvider } from "./provider.js";
+import { MongoAuthProvider } from "./provider.js";
 import type { AuthProvider } from "./types.js";
 
-let provider: AuthProvider = new SupabaseAuthProvider();
+let provider: AuthProvider = new MongoAuthProvider();
 export const setAuthProvider = (next: AuthProvider) => { provider = next; };
-export const resetAuthProvider = () => { provider = new SupabaseAuthProvider(); };
+export const resetAuthProvider = () => { provider = new MongoAuthProvider(); };
 export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const header=req.header("authorization");
   if (!header?.startsWith("Bearer ")) return next(new AppError(401,"Authentication required","UNAUTHORIZED"));

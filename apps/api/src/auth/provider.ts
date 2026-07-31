@@ -1,9 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import type { AppRole } from "@a1/validation";
-import { env } from "../env.js";
+import jwt from "jsonwebtoken";
 import type { AuthContext, AuthProvider } from "./types.js";
 
-const fullPermissions = [
+const JWT_SECRET = process.env.JWT_SECRET || "a1-solar-secret-key-2026-safe";
+
+export const fullPermissions = [
   "users:view", "users:create", "users:update", "users:disable", "users:remove", "users:assign_roles",
   "roles:view", "roles:assign_permissions",
   "business:view", "business:update",
@@ -17,22 +18,37 @@ const fullPermissions = [
   "dashboard:view", "customers:view", "products:view", "projects:view", "tickets:view"
 ];
 
-const testAccountMap: Record<string, { fullName: string; roles: string[]; permissions: string[] }> = {
-  "solar.service16@gmail.com": { fullName: "Primary Super Admin", roles: ["super_admin", "admin"], permissions: fullPermissions },
-  "admin@admin.com": { fullName: "Ayush Admin", roles: ["admin"], permissions: fullPermissions },
-  "superadmin@a1solar.test": { fullName: "A1 Super Admin", roles: ["super_admin", "admin"], permissions: fullPermissions },
-  "admin@a1solar.test": { fullName: "A1 Solar Admin", roles: ["admin"], permissions: fullPermissions },
-  "manager@a1solar.test": { fullName: "Sales Manager", roles: ["manager"], permissions: ["business:view", "leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create", "quotations:update", "agreements:view", "invoices:view", "installations:view", "technicians:view"] },
-  "sales@a1solar.test": { fullName: "Sales Executive User", roles: ["sales_executive"], permissions: ["leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create"] },
-  "installer@a1solar.test": { fullName: "Installation Staff User", roles: ["installation_staff"], permissions: ["dashboard:view", "projects:view", "projects:update", "quotations:view", "agreements:view", "invoices:view"] },
-  "technician@a1solar.test": { fullName: "Service Technician User", roles: ["service_technician"], permissions: ["dashboard:view", "tickets:view", "tickets:update", "quotations:view", "agreements:view", "invoices:view"] },
-  "accounts@a1solar.test": { fullName: "Finance & Accounts User", roles: ["accountant"], permissions: ["dashboard:view", "customers:view", "quotations:view", "agreements:view", "invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
-  "customer@a1solar.test": { fullName: "Rohan Sharma (Customer)", roles: ["customer"], permissions: ["agreements:view", "invoices:view"] }
+export const testAccountMap: Record<string, { fullName: string; pass: string; roles: string[]; permissions: string[] }> = {
+  "solar.service16@gmail.com": { fullName: "Primary Super Admin", pass: "admin123", roles: ["super_admin", "admin"], permissions: fullPermissions },
+  "admin@admin.com": { fullName: "Ayush Admin", pass: "admin123", roles: ["admin"], permissions: fullPermissions },
+  "superadmin@a1solar.test": { fullName: "A1 Super Admin", pass: "admin123", roles: ["super_admin", "admin"], permissions: fullPermissions },
+  "admin@a1solar.test": { fullName: "A1 Solar Admin", pass: "admin123", roles: ["admin"], permissions: fullPermissions },
+  "manager@a1solar.test": { fullName: "Sales Manager", pass: "admin123", roles: ["manager"], permissions: ["business:view", "leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create", "quotations:update", "agreements:view", "invoices:view", "installations:view", "technicians:view"] },
+  "sales@a1solar.test": { fullName: "Sales Executive User", pass: "admin123", roles: ["sales_executive"], permissions: ["leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create"] },
+  "installer@a1solar.test": { fullName: "Installation Staff User", pass: "admin123", roles: ["installation_staff"], permissions: ["dashboard:view", "projects:view", "projects:update", "quotations:view", "agreements:view", "invoices:view"] },
+  "technician@a1solar.test": { fullName: "Service Technician User", pass: "admin123", roles: ["service_technician"], permissions: ["dashboard:view", "tickets:view", "tickets:update", "quotations:view", "agreements:view", "invoices:view"] },
+  "accounts@a1solar.test": { fullName: "Finance & Accounts User", pass: "admin123", roles: ["accountant"], permissions: ["dashboard:view", "customers:view", "quotations:view", "agreements:view", "invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
+  "customer@a1solar.test": { fullName: "Rohan Sharma (Customer)", pass: "admin123", roles: ["customer"], permissions: ["agreements:view", "invoices:view"] }
 };
 
-export class SupabaseAuthProvider implements AuthProvider {
+export class MongoAuthProvider implements AuthProvider {
   async resolve(accessToken: string): Promise<AuthContext | null> {
     try {
+      // 1. Try verifying custom backend JWT (MongoDB path)
+      try {
+        const decoded = jwt.verify(accessToken, JWT_SECRET) as any;
+        if (decoded && decoded.userId) {
+          return {
+            userId: decoded.userId,
+            email: decoded.email,
+            active: decoded.active !== false,
+            roles: decoded.roles as AppRole[],
+            permissions: decoded.permissions,
+          };
+        }
+      } catch {}
+
+      // 2. Try mock/local admin check
       if (!accessToken || accessToken === "local-admin-token" || accessToken.startsWith("local-admin")) {
         let email = "solar.service16@gmail.com";
         if (accessToken.startsWith("local-admin-token:")) {
@@ -59,122 +75,6 @@ export class SupabaseAuthProvider implements AuthProvider {
           permissions: ["agreements:view", "payments:create"],
         };
       }
-
-      const url = env.SUPABASE_URL || "https://ugcearfqlcyzhmbfmcru.supabase.co";
-      const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY || "sb_publishable_ZN3-qlsbWTvy8YcXLQr3OQ_JvmoTGwD";
-
-      try {
-        const authResponse = await fetch(`${url}/auth/v1/user`, {
-          headers: { apikey: key, Authorization: `Bearer ${accessToken}` },
-        });
-        if (authResponse.ok) {
-          const user = (await authResponse.json()) as { id?: string; email?: string };
-          if (user?.id && user?.email) {
-            const isAdminEmail =
-              user.email.toLowerCase() === "solar.service16@gmail.com" ||
-              user.email.toLowerCase() === "admin@admin.com";
-
-            if (isAdminEmail) {
-              return {
-                userId: user.id,
-                email: user.email,
-                active: true,
-                roles: ["super_admin", "admin"],
-                permissions: fullPermissions,
-              };
-            }
-
-            // Query roles & permissions from Supabase DB
-            const supabase = createClient(url, key);
-            const { data: profile } = await supabase
-              .from("profiles")
-              .select(`
-                active,
-                user_roles (
-                  roles (
-                    name,
-                    role_permissions (
-                      permissions (
-                        key
-                      )
-                    )
-                  )
-                )
-              `)
-              .eq("id", user.id)
-              .maybeSingle();
-
-            const roles: string[] = [];
-            const permissionsSet = new Set<string>();
-            let isActive = true;
-
-            if (profile) {
-              isActive = profile.active !== false;
-              const uRoles = profile.user_roles;
-              const uRolesArr = Array.isArray(uRoles) ? uRoles : (uRoles ? [uRoles] : []);
-              for (const ur of uRolesArr) {
-                const roleObj = ur?.roles as any;
-                if (roleObj) {
-                  if (roleObj.name) roles.push(roleObj.name);
-                  const rolePerms = roleObj.role_permissions;
-                  const rolePermsArr = Array.isArray(rolePerms) ? rolePerms : (rolePerms ? [rolePerms] : []);
-                  for (const rp of rolePermsArr) {
-                    const permKey = rp?.permissions?.key;
-                    if (permKey) permissionsSet.add(permKey);
-                  }
-                }
-              }
-            }
-
-            // 1. If user is installer (installation_staff) or technician (service_technician),
-            // they get view permissions for PDFs (quotations, agreements, invoices), plus their specific duties
-            if (roles.includes("installation_staff")) {
-              permissionsSet.add("dashboard:view");
-              permissionsSet.add("projects:view");
-              permissionsSet.add("projects:update");
-              permissionsSet.add("quotations:view");
-              permissionsSet.add("agreements:view");
-              permissionsSet.add("invoices:view");
-            }
-            if (roles.includes("service_technician")) {
-              permissionsSet.add("dashboard:view");
-              permissionsSet.add("tickets:view");
-              permissionsSet.add("tickets:update");
-              permissionsSet.add("quotations:view");
-              permissionsSet.add("agreements:view");
-              permissionsSet.add("invoices:view");
-            }
-
-            // 2. If accountant, guarantee they have billing and operational view permissions
-            if (roles.includes("accountant")) {
-              permissionsSet.add("dashboard:view");
-              permissionsSet.add("customers:view");
-              permissionsSet.add("quotations:view");
-              permissionsSet.add("agreements:view");
-              permissionsSet.add("invoices:view");
-              permissionsSet.add("invoices:create");
-              permissionsSet.add("invoices:update");
-              permissionsSet.add("payments:view");
-              permissionsSet.add("payments:verify");
-            }
-
-            // 3. Default to customer if no roles exist
-            if (roles.length === 0) {
-              roles.push("customer");
-              permissionsSet.add("agreements:view");
-              permissionsSet.add("payments:create");
-            }
-
-            return {
-              userId: user.id,
-              email: user.email,
-              active: isActive,
-              roles: roles as AppRole[],
-              permissions: Array.from(permissionsSet),
-            };
-          }
-        }
-      } catch {}
 
       return null;
     } catch {

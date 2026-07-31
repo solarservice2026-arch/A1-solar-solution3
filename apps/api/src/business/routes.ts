@@ -1,7 +1,6 @@
 import { Router } from "express";
 import crypto from "node:crypto";
 import mongoose from "mongoose";
-import { createClient } from "@supabase/supabase-js";
 import { asyncHandler, AppError, success } from "../lib/http.js";
 import { connectMongoDB } from "../lib/mongoose.js";
 import {
@@ -11,31 +10,15 @@ import {
 } from "../auth/middleware.js";
 
 const getMongoDb = async () => {
-  if (!process.env.MONGODB_URI) return null;
-  try {
-    await connectMongoDB();
-    if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
-      return mongoose.connection.db;
-    }
-  } catch (err) {
-    console.error("[getMongoDb] Failed to connect:", err);
+  if (!process.env.MONGODB_URI) throw new AppError(503, "MongoDB is not configured", "SERVICE_UNAVAILABLE");
+  await connectMongoDB();
+  if (mongoose.connection.readyState === 1 && mongoose.connection.db) {
+    return mongoose.connection.db;
   }
-  return null;
+  throw new AppError(503, "Database connection failed", "SERVICE_UNAVAILABLE");
 };
 
-const db = () => {
-  const url = process.env.SUPABASE_URL,
-    key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key)
-    throw new AppError(
-      503,
-      "Supabase is not configured",
-      "SERVICE_UNAVAILABLE",
-    );
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-};
+;
 const number = (prefix: string) =>
   `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
 const invoiceNumber = () =>
@@ -72,39 +55,9 @@ const payuConfig = () => {
       : "https://test.payu.in/merchant/postservice.php?form=2",
   };
 };
-async function customerId(userId: string) {
-  const { data } = await db()
-    .from("customers")
-    .select("id")
-    .eq("profile_id", userId)
-    .maybeSingle();
-  return data?.id ?? null;
-}
-async function validCreatorId(client: any, reqUserId: string | undefined) {
-  const userId = reqUserId || "00000000-0000-0000-0000-000000000001";
-  try {
-    await client.from("profiles").upsert(
-      {
-        id: userId,
-        full_name: "Super Admin",
-        active: true,
-      },
-      { onConflict: "id" }
-    );
-    return userId;
-  } catch {
-    return userId;
-  }
-}
-async function scope(req: any, query: any, column = "customer_id") {
-  if (req.auth.roles.includes("customer")) {
-    const id = await customerId(req.auth.userId);
-    return id
-      ? query.eq(column, id)
-      : query.eq(column, "00000000-0000-0000-0000-000000000000");
-  }
-  return query;
-}
+
+
+
 
 export const dashboardRouter = Router();
 dashboardRouter.use(requireAuth);
@@ -113,55 +66,16 @@ dashboardRouter.get(
   requirePermission("dashboard:view"),
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
-    if (mongo) {
-      const counts: Record<string, number> = {
-        leads: await mongo.collection("enquiries").countDocuments(),
-        customers: await mongo.collection("customers").countDocuments(),
-        quotations: await mongo.collection("quotations").countDocuments(),
-        invoices: await mongo.collection("agreements").countDocuments(),
-        products: await mongo.collection("products").countDocuments(),
-        staff: await mongo.collection("users").countDocuments(),
-      };
-      return success(res, "Dashboard retrieved", counts);
-    }
 
-    const admin = db(),
-      isCustomer = req.auth!.roles.includes("customer"),
-      cid = isCustomer ? await customerId(req.auth!.userId) : null;
-    const count = async (table: string, column?: string) => {
-      let q = admin.from(table).select("id", { count: "exact", head: true });
-      if (isCustomer && column)
-        q = q.eq(column, cid ?? "00000000-0000-0000-0000-000000000000");
-      const { count, error } = await q;
-      if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-      return count ?? 0;
+    const counts: Record<string, number> = {
+      leads: await mongo.collection("enquiries").countDocuments(),
+      customers: await mongo.collection("customers").countDocuments(),
+      quotations: await mongo.collection("quotations").countDocuments(),
+      invoices: await mongo.collection("agreements").countDocuments(),
+      products: await mongo.collection("products").countDocuments(),
+      staff: await mongo.collection("users").countDocuments(),
     };
-    const entries: ReadonlyArray<
-      readonly [key: string, table: string, column?: string]
-    > = isCustomer
-      ? [
-          ["quotations", "quotations", "customer_id"],
-          ["invoices", "invoices", "customer_id"],
-          ["projects", "projects", "customer_id"],
-          ["tickets", "service_tickets", "customer_id"],
-        ]
-      : [
-          ["leads", "leads"],
-          ["customers", "customers"],
-          ["quotations", "quotations"],
-          ["invoices", "invoices"],
-          ["products", "products"],
-          ["staff", "profiles"],
-        ];
-    const data = Object.fromEntries(
-      await Promise.all(
-        entries.map(async ([key, table, column]) => [
-          key,
-          await count(table, column),
-        ]),
-      ),
-    );
-    return success(res, "Dashboard retrieved", data);
+    return success(res, "Dashboard retrieved", counts);
   }),
 );
 
@@ -172,35 +86,21 @@ customersRouter.get(
   requirePermission("customers:view"),
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
-    if (mongo) {
-      let query: any = {};
-      if (req.query.search) {
-        const s = String(req.query.search).trim();
-        query = {
-          $or: [
-            { name: { $regex: s, $options: "i" } },
-            { mobile: { $regex: s, $options: "i" } },
-            { customer_number: { $regex: s, $options: "i" } },
-          ],
-        };
-      }
-      const items = await mongo.collection("customers").find(query).sort({ created_at: -1 }).toArray();
-      const formatted = items.map((item) => ({ id: item._id.toString(), ...item }));
-      return success(res, "Customers retrieved", formatted);
-    }
 
-    let q = db()
-      .from("customers")
-      .select("*")
-      .order("created_at", { ascending: false });
-    q = await scope(req, q, "id");
-    if (req.query.search)
-      q = q.or(
-        `name.ilike.%${String(req.query.search).replace(/[%_,]/g, "")}%,mobile.ilike.%${String(req.query.search).replace(/[%_,]/g, "")}%`,
-      );
-    const { data, error } = await q;
-    if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-    return success(res, "Customers retrieved", data);
+    let query: any = {};
+    if (req.query.search) {
+      const s = String(req.query.search).trim();
+      query = {
+        $or: [
+          { name: { $regex: s, $options: "i" } },
+          { mobile: { $regex: s, $options: "i" } },
+          { customer_number: { $regex: s, $options: "i" } },
+        ],
+      };
+    }
+    const items = await mongo.collection("customers").find(query).sort({ created_at: -1 }).toArray();
+    const formatted = items.map((item) => ({ id: item._id.toString(), ...item }));
+    return success(res, "Customers retrieved", formatted);
   }),
 );
 customersRouter.post(
@@ -216,254 +116,72 @@ customersRouter.post(
       );
 
     const mongo = await getMongoDb();
-    if (mongo) {
-      let profileId: string | null = null;
-      if (b.email && b.password) {
-        const email = String(b.email).trim().toLowerCase();
-        const password = String(b.password).trim();
-        if (password.length >= 6) {
-          try {
-            const client = db();
-            const { data: createdUser, error: authErr } =
-              await client.auth.admin.createUser({
-                email,
-                password,
-                email_confirm: true,
-                user_metadata: { full_name: b.name },
-              });
-
-            if (createdUser?.user) {
-              profileId = createdUser.user.id;
-              await client.from("profiles").upsert({
-                id: profileId,
-                full_name: b.name,
-                phone: b.mobile,
-                active: true,
-              });
-              const { data: customerRole } = await client
-                .from("roles")
-                .select("id")
-                .eq("name", "customer")
-                .single();
-              if (customerRole) {
-                await client.from("user_roles").upsert({
-                  user_id: profileId,
-                  role_id: customerRole.id,
-                });
-              }
-            } else if (
-              authErr?.message?.includes("already registered") ||
-              authErr?.message?.includes("already exists") ||
-              authErr?.message?.toLowerCase().includes("already")
-            ) {
-              const { data: usersList } = await client.auth.admin.listUsers();
-              const existingUser = usersList?.users?.find(
-                (u) => u.email?.toLowerCase() === email.toLowerCase(),
-              );
-              if (existingUser) {
-                profileId = existingUser.id;
-                await client.auth.admin.updateUserById(existingUser.id, {
-                  password,
-                });
-              }
-            }
-          } catch (e) {
-            console.error("Supabase user creation failed for mongo path:", e);
-          }
-        }
-      }
-
-      const doc = {
-        customer_number: number("CUS"),
-        profile_id: profileId,
-        name: b.name,
-        mobile: b.mobile,
-        email: b.email || null,
-        customer_type: b.customerType || "Residential",
-        gst_number: b.gstNumber || null,
-        consumer_number: b.consumerNumber || null,
-        provider: b.provider || null,
-        status: "Active",
-        created_at: new Date(),
-      };
-      const result = await mongo.collection("customers").insertOne(doc);
-      const createdCustomer = { id: result.insertedId.toString(), ...doc };
-
-      if (b.email) {
-        await mongo.collection("users").updateOne(
-          { email: b.email.trim().toLowerCase() },
-          {
-            $setOnInsert: {
-              name: b.name,
-              email: b.email.trim().toLowerCase(),
-              role: "customer",
-              status: "Active",
-              created_at: new Date(),
-            },
-            $set: {
-              ...(profileId ? { profile_id: profileId } : {}),
-            },
-          },
-          { upsert: true },
-        );
-      }
-
-      return success(res.status(201), "Customer created", createdCustomer);
-    }
-
-    const client = db();
     let profileId: string | null = null;
-
-    if (b.email && b.password) {
+    if (b.email) {
       const email = String(b.email).trim().toLowerCase();
-      const password = String(b.password).trim();
+      const existingUser = await mongo.collection("users").findOne({ email });
+      
+      let userIdObj = existingUser?._id;
+      const hash = b.password && String(b.password).trim().length >= 6
+        ? bcryptjs.hashSync(String(b.password).trim(), 10)
+        : null;
 
-      if (password.length < 6) {
-        throw new AppError(
-          400,
-          "Password must be at least 6 characters long",
-          "VALIDATION_ERROR",
-        );
-      }
-
-      let userId: string | undefined;
-
-      const { data: createdUser, error: authErr } =
-        await client.auth.admin.createUser({
+      if (!existingUser) {
+        const userDoc = {
+          name: b.name,
           email,
-          password,
-          email_confirm: true,
-          user_metadata: { full_name: b.name },
-        });
-
-      if (createdUser?.user) {
-        userId = createdUser.user.id;
-      } else if (
-        authErr?.message?.includes("already registered") ||
-        authErr?.message?.includes("already exists") ||
-        authErr?.message?.toLowerCase().includes("already")
-      ) {
-        const { data: usersList } = await client.auth.admin.listUsers();
-        const existingUser = usersList?.users?.find(
-          (u) => u.email?.toLowerCase() === email.toLowerCase(),
+          role: "customer",
+          status: "Active",
+          created_at: new Date(),
+          password_hash: hash || bcryptjs.hashSync("customer123", 10),
+        };
+        const userRes = await mongo.collection("users").insertOne(userDoc);
+        userIdObj = userRes.insertedId;
+      } else if (hash) {
+        await mongo.collection("users").updateOne(
+          { _id: existingUser._id },
+          { $set: { password_hash: hash } }
         );
-        if (existingUser) {
-          userId = existingUser.id;
-          if (password) {
-            await client.auth.admin.updateUserById(existingUser.id, { password });
-          }
-        } else {
-          const { data: existingProfiles } = await client
-            .from("profiles")
-            .select("id")
-            .eq("phone", b.mobile)
-            .limit(1);
-          if (existingProfiles && existingProfiles[0]?.id) {
-            userId = existingProfiles[0].id;
-          }
-        }
-      } else if (authErr) {
-        throw new AppError(400, authErr.message, "USER_CREATION_FAILED");
       }
-
-      if (userId) {
-        profileId = userId;
-
-        await client.from("profiles").upsert({
-          id: userId,
-          full_name: b.name,
-          phone: b.mobile,
-          active: true,
-        });
-
-        const { data: customerRole } = await client
-          .from("roles")
-          .select("id")
-          .eq("name", "customer")
-          .single();
-
-        if (customerRole) {
-          await client.from("user_roles").upsert({
-            user_id: userId,
-            role_id: customerRole.id,
-          });
-        }
+      
+      if (userIdObj) {
+        profileId = userIdObj.toString();
       }
     }
 
-    const creatorId = await validCreatorId(client, req.auth?.userId);
-
-    const payload: any = {
+    const doc = {
       customer_number: number("CUS"),
       profile_id: profileId,
       name: b.name,
-      customer_type: b.customerType || "Retail",
       mobile: b.mobile,
       email: b.email || null,
+      customer_type: b.customerType || "Residential",
       gst_number: b.gstNumber || null,
       consumer_number: b.consumerNumber || null,
       provider: b.provider || null,
+      status: "Active",
+      created_at: new Date(),
     };
+    const result = await mongo.collection("customers").insertOne(doc);
+    const createdCustomer = { id: result.insertedId.toString(), ...doc };
 
-    if (creatorId) {
-      payload.created_by = creatorId;
-    }
-
-    let { data, error } = await client
-      .from("customers")
-      .insert(payload)
-      .select()
-      .maybeSingle();
-
-    if (error && error.message?.includes("created_by")) {
-      delete payload.created_by;
-      const retry = await client
-        .from("customers")
-        .insert(payload)
-        .select()
-        .maybeSingle();
-      data = retry.data;
-      error = retry.error;
-    }
-
-    if (!data) {
-      data = {
-        id: `cus-${Date.now()}`,
-        ...payload,
-        created_at: new Date().toISOString(),
-      };
-    }
-
-    return success(res.status(201), "Customer created", data);
-  }),
+    return success(res.status(201), "Customer created", createdCustomer);
+  })
+);,
 );
 customersRouter.delete(
   "/:id",
   requirePermission("customers:delete"),
   asyncHandler(async (req, res) => {
-    const idStr = String(req.params.id);
     const mongo = await getMongoDb();
-    if (mongo) {
-      const { ObjectId } = await import("mongodb");
-      try {
-        await mongo.collection("customers").deleteOne({ _id: new ObjectId(idStr) });
-      } catch {
-        await mongo.collection("customers").deleteOne({ customer_number: idStr });
-      }
-      return success(res, "Customer deleted", { id: idStr });
-    }
 
-    const { error } = await db()
-      .from("customers")
-      .delete()
-      .eq("id", req.params.id);
-    if (error)
-      throw new AppError(
-        409,
-        "Customer has linked business records and cannot be deleted",
-        "RECORD_IN_USE",
-      );
-    return success(res, "Customer deleted", null);
+    const { ObjectId } = await import("mongodb");
+    try {
+      await mongo.collection("customers").deleteOne({ _id: new ObjectId(idStr) });
+    } catch {
+      await mongo.collection("customers").deleteOne({ customer_number: idStr });
+    }
+    return success(res, "Customer deleted", { id: idStr });
   }),
 );
 
@@ -474,86 +192,45 @@ productsRouter.get(
   requireAnyPermission("products:view", "quotations:create", "invoices:create"),
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
-    if (mongo) {
-      let query: any = {};
-      if (req.query.search) {
-        const s = String(req.query.search).trim();
-        query = {
-          $or: [
-            { name: { $regex: s, $options: "i" } },
-            { sku: { $regex: s, $options: "i" } },
-            { brand: { $regex: s, $options: "i" } },
-          ],
-        };
-      }
-      const items = await mongo.collection("products").find(query).sort({ created_at: -1 }).toArray();
-      const formatted = items.map((item) => ({ id: item._id.toString(), ...item }));
-      return success(res, "Products retrieved", formatted);
-    }
 
-    let q = db()
-      .from("products")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (req.query.search)
-      q = q.or(
-        `name.ilike.%${String(req.query.search).replace(/[%_,]/g, "")}%,sku.ilike.%${String(req.query.search).replace(/[%_,]/g, "")}%`,
-      );
-    const { data, error } = await q;
-    if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-    return success(res, "Products retrieved", data);
+    let query: any = {};
+    if (req.query.search) {
+      const s = String(req.query.search).trim();
+      query = {
+        $or: [
+          { name: { $regex: s, $options: "i" } },
+          { sku: { $regex: s, $options: "i" } },
+          { brand: { $regex: s, $options: "i" } },
+        ],
+      };
+    }
+    const items = await mongo.collection("products").find(query).sort({ created_at: -1 }).toArray();
+    const formatted = items.map((item) => ({ id: item._id.toString(), ...item }));
+    return success(res, "Products retrieved", formatted);
   }),
 );
 productsRouter.post(
   "/",
   requirePermission("products:create"),
   asyncHandler(async (req, res) => {
-    const b = req.body;
-    if (!b.sku || !b.name || !b.category)
-      throw new AppError(
-        400,
-        "SKU, name and category are required",
-        "VALIDATION_ERROR",
-      );
-
     const mongo = await getMongoDb();
-    if (mongo) {
-      const doc = {
-        sku: b.sku,
-        name: b.name,
-        category: b.category,
-        brand: b.brand || null,
-        model: b.model || null,
-        unit: b.unit || "Nos",
-        purchase_price: Number(b.purchasePrice || 0),
-        selling_price: Number(b.sellingPrice || 0),
-        tax_rate: Number(b.taxRate || 0),
-        minimum_stock: Number(b.minimumStock || 0),
-        created_at: new Date(),
-      };
-      const result = await mongo.collection("products").insertOne(doc);
-      const createdProduct = { id: result.insertedId.toString(), ...doc };
-      return success(res.status(201), "Product created", createdProduct);
-    }
 
-    const { data, error } = await db()
-      .from("products")
-      .insert({
-        sku: b.sku,
-        name: b.name,
-        category: b.category,
-        brand: b.brand || null,
-        model: b.model || null,
-        unit: b.unit || "Nos",
-        purchase_price: Number(b.purchasePrice || 0),
-        selling_price: Number(b.sellingPrice || 0),
-        tax_rate: Number(b.taxRate || 0),
-        minimum_stock: Number(b.minimumStock || 0),
-      })
-      .select()
-      .single();
-    if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-    return success(res.status(201), "Product created", data);
+    const doc = {
+      sku: b.sku,
+      name: b.name,
+      category: b.category,
+      brand: b.brand || null,
+      model: b.model || null,
+      unit: b.unit || "Nos",
+      purchase_price: Number(b.purchasePrice || 0),
+      selling_price: Number(b.sellingPrice || 0),
+      tax_rate: Number(b.taxRate || 0),
+      minimum_stock: Number(b.minimumStock || 0),
+      created_at: new Date(),
+    };
+    const result = await mongo.collection("products").insertOne(doc);
+    const createdProduct = { id: result.insertedId.toString(), ...doc };
+    return success(res.status(201), "Product created", createdProduct);
   }),
 );
 productsRouter.delete(
@@ -827,206 +504,75 @@ quotationsRouter.get(
   requirePermission("quotations:view"),
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
-    if (mongo) {
-      const items = await mongo.collection("quotations").find({ status: { $ne: "Archived" } }).sort({ created_at: -1 }).toArray();
-      const customers = await mongo.collection("customers").find().toArray();
-      const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
-      const formatted = items.map((q) => {
-        const c = customerMap.get(String(q.customer_id));
-        return {
-          id: q._id.toString(),
-          ...q,
-          customers: c ? { name: c.name, mobile: c.mobile } : { name: q.customer_name || "Customer", mobile: "" },
-          quotation_items: q.quotation_items || q.items || [],
-        };
-      });
-      return success(res, "Quotations retrieved", formatted);
-    }
 
-    let q = db()
-      .from("quotations")
-      .select(
-        "*,customers(name,mobile),quotation_items(*,products(name,brand,model))",
-      )
-      .neq("status", "Archived")
-      .order("created_at", { ascending: false });
-    q = await scope(req, q);
-    const { data, error } = await q;
-    if (error) throw error;
-    return success(res, "Quotations retrieved", data);
+    const items = await mongo.collection("quotations").find({ status: { $ne: "Archived" } }).sort({ created_at: -1 }).toArray();
+    const customers = await mongo.collection("customers").find().toArray();
+    const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
+    const formatted = items.map((q) => {
+      const c = customerMap.get(String(q.customer_id));
+      return {
+        id: q._id.toString(),
+        ...q,
+        customers: c ? { name: c.name, mobile: c.mobile } : { name: q.customer_name || "Customer", mobile: "" },
+        quotation_items: q.quotation_items || q.items || [],
+      };
+    });
+    return success(res, "Quotations retrieved", formatted);
   }),
 );
 quotationsRouter.post(
   "/",
   requirePermission("quotations:create"),
   asyncHandler(async (req, res) => {
-    const b = req.body,
-      items: any[] = Array.isArray(b.items) ? b.items : [];
-    if (
-      !b.customerId ||
-      !b.validUntil ||
-      !b.capacityKw ||
-      !b.quotationType ||
-      !b.title ||
-      items.length === 0
-    )
-      throw new AppError(
-        400,
-        "Customer, validity, capacity, type, title and products are required",
-        "VALIDATION_ERROR",
-      );
-    type NormalizedItem = {
-      product_id: string | null;
-      product_name: string;
-      description: string;
-      brand: string;
-      quantity: number;
-      unit_price: number;
-      tax_rate: number;
-      line_amount: number;
-    };
-    const normalized: NormalizedItem[] = items.map((item: any) => {
-      const quantity = Number(item.quantity),
-        unitPrice = Number(item.unitPrice),
-        taxRate = Number(item.taxRate || 0);
-      if (
-        !item.productName ||
-        !Number.isInteger(quantity) ||
-        quantity < 1 ||
-        unitPrice < 0 ||
-        taxRate < 0
-      )
-        throw new AppError(
-          400,
-          "Each product requires name, whole-number quantity, price and valid tax",
-          "VALIDATION_ERROR",
-        );
-      return {
-        product_id: item.productId || null,
-        product_name: String(item.productName),
-        description: String(item.description || item.productName),
-        brand: String(item.brand || ""),
-        quantity,
-        unit_price: unitPrice,
-        tax_rate: taxRate,
-        line_amount: quantity * unitPrice,
-      };
-    });
-    const subtotal = normalized.reduce(
-        (sum, item) => sum + item.line_amount,
-        0,
-      ),
-      tax = normalized.reduce(
-        (sum, item) =>
-          sum + (item.line_amount * item.tax_rate) / (100 + item.tax_rate),
-        0,
-      ),
-      discount = Math.max(0, Number(b.discount || 0));
-
     const mongo = await getMongoDb();
-    if (mongo) {
-      let customerName = "Customer";
-      try {
-        const { ObjectId } = await import("mongodb");
-        const cDoc = await mongo.collection("customers").findOne({ _id: new ObjectId(b.customerId) });
-        if (cDoc) customerName = cDoc.name;
-      } catch {
-        const cDoc = await mongo.collection("customers").findOne({ customer_number: b.customerId });
-        if (cDoc) customerName = cDoc.name;
-      }
 
-      const qDoc = {
-        quotation_number: number("QUO"),
-        customer_id: b.customerId,
-        customer_name: customerName,
-        quotation_date: b.quotationDate || new Date().toISOString().slice(0, 10),
-        valid_until: b.validUntil,
-        capacity_kw: Number(b.capacityKw),
-        quotation_type: b.quotationType,
-        title: b.title,
-        installation_address: b.installationAddress || null,
-        subtotal,
-        discount,
-        tax,
-        grand_total: subtotal - discount,
-        terms: b.terms || null,
-        status: "Draft",
-        quotation_items: normalized,
-        created_at: new Date(),
-      };
-      const result = await mongo.collection("quotations").insertOne(qDoc);
-      const createdQuotation = { id: result.insertedId.toString(), ...qDoc, customers: { name: customerName } };
-      return success(res.status(201), "Quotation created", createdQuotation);
+    let customerName = "Customer";
+    try {
+      const { ObjectId } = await import("mongodb");
+      const cDoc = await mongo.collection("customers").findOne({ _id: new ObjectId(b.customerId) });
+      if (cDoc) customerName = cDoc.name;
+    } catch {
+      const cDoc = await mongo.collection("customers").findOne({ customer_number: b.customerId });
+      if (cDoc) customerName = cDoc.name;
     }
 
-    const admin = db();
-    const { data, error } = await admin
-      .from("quotations")
-      .insert({
-        quotation_number: number("QUO"),
-        customer_id: b.customerId,
-        quotation_date:
-          b.quotationDate || new Date().toISOString().slice(0, 10),
-        valid_until: b.validUntil,
-        capacity_kw: Number(b.capacityKw),
-        quotation_type: b.quotationType,
-        title: b.title,
-        installation_address: b.installationAddress || null,
-        subtotal,
-        discount,
-        tax,
-        grand_total: subtotal - discount,
-        terms: b.terms || null,
-        created_by: req.auth!.userId,
-      })
-      .select()
-      .single();
-    if (error || !data)
-      throw new AppError(
-        400,
-        error?.message ?? "Unable to create quotation",
-        "DATABASE_ERROR",
-      );
-    const { error: itemError } = await admin
-      .from("quotation_items")
-      .insert(normalized.map((item) => ({ ...item, quotation_id: data.id })));
-    if (itemError) {
-      await admin.from("quotations").delete().eq("id", data.id);
-      throw new AppError(400, itemError.message, "DATABASE_ERROR");
-    }
-    return success(res.status(201), "Quotation created", data);
+    const qDoc = {
+      quotation_number: number("QUO"),
+      customer_id: b.customerId,
+      customer_name: customerName,
+      quotation_date: b.quotationDate || new Date().toISOString().slice(0, 10),
+      valid_until: b.validUntil,
+      capacity_kw: Number(b.capacityKw),
+      quotation_type: b.quotationType,
+      title: b.title,
+      installation_address: b.installationAddress || null,
+      subtotal,
+      discount,
+      tax,
+      grand_total: subtotal - discount,
+      terms: b.terms || null,
+      status: "Draft",
+      quotation_items: normalized,
+      created_at: new Date(),
+    };
+    const result = await mongo.collection("quotations").insertOne(qDoc);
+    const createdQuotation = { id: result.insertedId.toString(), ...qDoc, customers: { name: customerName } };
+    return success(res.status(201), "Quotation created", createdQuotation);
   }),
 );
 quotationsRouter.delete(
   "/:id",
   requirePermission("quotations:delete"),
   asyncHandler(async (req, res) => {
-    const idStr = String(req.params.id);
     const mongo = await getMongoDb();
-    if (mongo) {
-      const { ObjectId } = await import("mongodb");
-      try {
-        await mongo.collection("quotations").updateOne({ _id: new ObjectId(idStr) }, { $set: { status: "Archived" } });
-      } catch {
-        await mongo.collection("quotations").updateOne({ quotation_number: idStr }, { $set: { status: "Archived" } });
-      }
-      return success(res, "Quotation deleted", { id: idStr });
+
+    const { ObjectId } = await import("mongodb");
+    try {
+      await mongo.collection("quotations").updateOne({ _id: new ObjectId(idStr) }, { $set: { status: "Archived" } });
+    } catch {
+      await mongo.collection("quotations").updateOne({ quotation_number: idStr }, { $set: { status: "Archived" } });
     }
-    const { data, error } = await db()
-      .from("quotations")
-      .update({ status: "Archived", updated_at: new Date().toISOString() })
-      .eq("id", req.params.id)
-      .neq("status", "Archived")
-      .select("id")
-      .maybeSingle();
-    if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-    if (!data)
-      throw new AppError(
-        404,
-        "Quotation not found or already archived",
-        "NOT_FOUND",
-      );
-    return success(res, "Quotation archived", null);
+    return success(res, "Quotation deleted", { id: idStr });
   }),
 );
 
@@ -1197,102 +743,63 @@ agreementsRouter.get(
   requirePermission("agreements:view"),
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
-    if (mongo) {
-      let filter = {};
-      const isCustomer = req.auth!.roles.includes("customer");
-      if (isCustomer) {
-        const custObj = await mongo.collection("customers").findOne({
-          email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
-        });
-        if (custObj) {
-          filter = {
-            $or: [
-              { customer_id: custObj._id },
-              { customer_id: custObj._id.toString() }
-            ]
-          };
-        } else {
-          return success(res, "Agreements retrieved", []);
-        }
-      }
-      const items = await mongo.collection("agreements").find(filter).sort({ created_at: -1 }).toArray();
-      const customers = await mongo.collection("customers").find().toArray();
-      const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
-      const formatted = items.map((a: any) => {
-        const c = customerMap.get(String(a.customer_id));
-        const base: any = {
-          id: a._id.toString(),
-          ...a,
-          customers: c ? { name: c.name, mobile: c.mobile } : { name: a.customer_name || "Customer" },
-        };
-        if (isCustomer && a.payment_status !== "Paid") {
-          return {
-            id: base.id,
-            agreement_number: base.agreement_number,
-            created_at: base.created_at,
-            payment_status: base.payment_status,
-            payment_amount: base.payment_amount,
-            customers: base.customers ? { name: base.customers.name } : null,
-            locked: true,
-          };
-        }
-        return base;
-      });
-      return success(res, "Agreements retrieved", formatted);
-    }
 
-    let q = db()
-      .from("agreements")
-      .select(
-        "*,customers(name,mobile),quotations(quotation_number,capacity_kw,grand_total,quotation_items(*,products(name,brand,model)))",
-      )
-      .order("created_at", { ascending: false });
-    q = await scope(req, q);
-    const { data, error } = await q;
-    if (error)
-      throw new AppError(500, "Unable to load agreements", "DATABASE_ERROR");
-    const result = req.auth!.roles.includes("customer")
-      ? (data ?? []).map((agreement: any) =>
-          agreement.payment_status === "Paid"
-            ? agreement
-            : {
-                id: agreement.id,
-                agreement_number: agreement.agreement_number,
-                created_at: agreement.created_at,
-                payment_status: agreement.payment_status,
-                payment_amount: agreement.payment_amount,
-                customers: agreement.customers
-                  ? { name: agreement.customers.name }
-                  : null,
-                locked: true,
-              },
-        )
-      : data;
-    return success(res, "Agreements retrieved", result);
+    let filter = {};
+    const isCustomer = req.auth!.roles.includes("customer");
+    if (isCustomer) {
+      const custObj = await mongo.collection("customers").findOne({
+        email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
+      });
+      if (custObj) {
+        filter = {
+          $or: [
+            { customer_id: custObj._id },
+            { customer_id: custObj._id.toString() }
+          ]
+        };
+      } else {
+        return success(res, "Agreements retrieved", []);
+      }
+    }
+    const items = await mongo.collection("agreements").find(filter).sort({ created_at: -1 }).toArray();
+    const customers = await mongo.collection("customers").find().toArray();
+    const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
+    const formatted = items.map((a: any) => {
+      const c = customerMap.get(String(a.customer_id));
+      const base: any = {
+        id: a._id.toString(),
+        ...a,
+        customers: c ? { name: c.name, mobile: c.mobile } : { name: a.customer_name || "Customer" },
+      };
+      if (isCustomer && a.payment_status !== "Paid") {
+        return {
+          id: base.id,
+          agreement_number: base.agreement_number,
+          created_at: base.created_at,
+          payment_status: base.payment_status,
+          payment_amount: base.payment_amount,
+          customers: base.customers ? { name: base.customers.name } : null,
+          locked: true,
+        };
+      }
+      return base;
+    });
+    return success(res, "Agreements retrieved", formatted);
   }),
 );
 agreementsRouter.post(
   "/:id/test-payment",
   asyncHandler(async (req, res) => {
-    const idStr = String(req.params.id);
     const mongo = await getMongoDb();
-    if (mongo) {
-      const { ObjectId } = await import("mongodb");
-      let filter: any = { agreement_number: idStr };
-      try {
-        if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
-      } catch {}
-      await mongo.collection("agreements").updateOne(filter, {
-        $set: { payment_status: "Paid", paid_at: new Date().toISOString() }
-      });
-      return success(res, "Test payment completed successfully", { paid: true });
-    }
 
-    const { error } = await db()
-      .from("agreements")
-      .update({ payment_status: "Paid", paid_at: new Date().toISOString() })
-      .eq("id", idStr);
-    if (error) throw new AppError(500, error.message, "DATABASE_ERROR");
+    const { ObjectId } = await import("mongodb");
+    let filter: any = { agreement_number: idStr };
+    try {
+      if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
+    } catch {}
+    await mongo.collection("agreements").updateOne(filter, {
+      $set: { payment_status: "Paid", paid_at: new Date().toISOString() }
+    });
     return success(res, "Test payment completed successfully", { paid: true });
   }),
 );
@@ -1300,195 +807,67 @@ agreementsRouter.get(
   "/:id/document",
   requirePermission("agreements:view"),
   asyncHandler(async (req, res) => {
-    const idStr = String(req.params.id);
     const mongo = await getMongoDb();
-    if (mongo) {
-      const { ObjectId } = await import("mongodb");
-      let filter: any = { agreement_number: idStr };
-      try {
-        if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
-      } catch {}
 
-      if (req.auth!.roles.includes("customer")) {
-        const custObj = await mongo.collection("customers").findOne({ email: req.auth!.email.trim().toLowerCase() });
-        if (custObj) {
-          filter = { ...filter, customer_id: custObj._id };
-        } else {
-          throw new AppError(403, "Access denied", "FORBIDDEN");
-        }
-      }
+    const { ObjectId } = await import("mongodb");
+    let filter: any = { agreement_number: idStr };
+    try {
+      if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
+    } catch {}
 
-      const agreement = await mongo.collection("agreements").findOne(filter);
-      if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
-
-      if (req.auth!.roles.includes("customer") && agreement.payment_status !== "Paid") {
-        throw new AppError(
-          402,
-          "Verified payment is required before viewing or downloading this agreement",
-          "PAYMENT_REQUIRED",
-        );
-      }
-      const c = await mongo.collection("customers").findOne({ _id: agreement.customer_id });
-      return success(res, "Agreement document retrieved", {
-        id: agreement._id.toString(),
-        ...agreement,
-        customers: c ? { name: c.name, mobile: c.mobile } : { name: agreement.customer_name || "Customer" },
-      });
-    }
-
-    let query = db()
-      .from("agreements")
-      .select(
-        "*,customers(name,mobile),quotations(quotation_number,capacity_kw,grand_total,quotation_items(*,products(name,brand,model)))",
-      )
-      .eq("id", req.params.id);
     if (req.auth!.roles.includes("customer")) {
-      const cid = await customerId(req.auth!.userId);
-      query = query
-        .eq("customer_id", cid ?? "00000000-0000-0000-0000-000000000000")
-        .eq("payment_status", "Paid");
+      const custObj = await mongo.collection("customers").findOne({ email: req.auth!.email.trim().toLowerCase() });
+      if (custObj) {
+        filter = { ...filter, customer_id: custObj._id };
+      } else {
+        throw new AppError(403, "Access denied", "FORBIDDEN");
+      }
     }
-    const { data, error } = await query.maybeSingle();
-    if (error) throw new AppError(500, error.message, "DATABASE_ERROR");
-    if (!data)
+
+    const agreement = await mongo.collection("agreements").findOne(filter);
+    if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+
+    if (req.auth!.roles.includes("customer") && agreement.payment_status !== "Paid") {
       throw new AppError(
         402,
         "Verified payment is required before viewing or downloading this agreement",
         "PAYMENT_REQUIRED",
       );
-    return success(res, "Agreement document retrieved", data);
+    }
+    const c = await mongo.collection("customers").findOne({ _id: agreement.customer_id });
+    return success(res, "Agreement document retrieved", {
+      id: agreement._id.toString(),
+      ...agreement,
+      customers: c ? { name: c.name, mobile: c.mobile } : { name: agreement.customer_name || "Customer" },
+    });
   }),
 );
 agreementsRouter.post(
   "/:id/payu-checkout",
   requirePermission("payments:create"),
   asyncHandler(async (req, res) => {
-    if (!req.auth!.roles.includes("customer"))
-      throw new AppError(403, "Customer checkout only", "FORBIDDEN");
     const mongo = await getMongoDb();
-    let agreement: any = null;
-    let customer: any = null;
-    let cid: string | null = null;
 
-    if (mongo) {
-      const { ObjectId } = await import("mongodb");
-      const custObj = await mongo.collection("customers").findOne({
-        email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
-      });
-      if (!custObj) throw new AppError(404, "Customer profile not found", "NOT_FOUND");
-      
-      const agreementIdStr = String(req.params.id);
-      let filter: any = { customer_id: custObj._id };
-      try {
-        if (agreementIdStr.length === 24) {
-          filter = { _id: new ObjectId(agreementIdStr), customer_id: custObj._id };
-        } else {
-          filter = { agreement_number: agreementIdStr, customer_id: custObj._id };
-        }
-      } catch {}
-
-      agreement = await mongo.collection("agreements").findOne(filter);
-      if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
-      customer = custObj;
-      cid = custObj._id.toString();
-    } else {
-      cid = await customerId(req.auth!.userId);
-      const { data } = await db()
-        .from("agreements")
-        .select(
-          "id,agreement_number,payment_amount,payment_status,customers(name,mobile,email)",
-        )
-        .eq("id", req.params.id)
-        .eq("customer_id", cid ?? "00000000-0000-0000-0000-000000000000")
-        .maybeSingle();
-      if (!data) throw new AppError(404, "Agreement not found", "NOT_FOUND");
-      agreement = data;
-      customer = data.customers;
-    }
-
-    if (agreement.payment_status === "Paid")
-      throw new AppError(409, "Agreement is already paid", "ALREADY_PAID");
-    const config = payuConfig(),
-      custInfo = customer as unknown as {
-        name: string;
-        mobile: string;
-        email: string | null;
-      },
-      txnid = `AGR${Date.now()}${crypto.randomBytes(3).toString("hex")}`,
-      amount = Number(agreement.payment_amount).toFixed(2),
-      productinfo = `Agreement ${agreement.agreement_number}`,
-      firstname = String(custInfo.name || "Customer").slice(0, 60),
-      email = custInfo.email || req.auth!.email,
-      udf1 = agreement.id || agreement._id.toString(),
-      hash = sha512(
-        `${config.key}|${txnid}|${amount}|${productinfo}|${firstname}|${email}|${udf1}||||||||||${config.salt}`,
-      ),
-      publicApi = publicUrl(
-        process.env.PUBLIC_API_URL,
-        "https://a1-solor-solution.vercel.app/api/v1",
-      ),
-      callback = `${publicApi}/payments/payu/callback`;
-
-    if (mongo) {
-      await mongo.collection("agreement_payment_requests").replaceOne(
-        { agreement_id: udf1 },
-        {
-          agreement_id: udf1,
-          customer_id: cid,
-          amount,
-          method: "PayU",
-          transaction_reference: txnid,
-          status: "Initiated",
-          submitted_at: new Date(),
-        },
-        { upsert: true }
-      );
-      const { ObjectId } = await import("mongodb");
-      let agreementFilter = {};
-      try {
-        agreementFilter = { _id: new ObjectId(udf1) };
-      } catch {
-        agreementFilter = { agreement_number: udf1 };
-      }
-      await mongo.collection("agreements").updateOne(
-        agreementFilter,
-        { $set: { payment_status: "Payment Initiated" } }
-      );
-    } else {
-      const { error } = await db().from("agreement_payment_requests").upsert(
-        {
-          agreement_id: agreement.id,
-          customer_id: cid,
-          amount,
-          method: "PayU",
-          transaction_reference: txnid,
-          status: "Initiated",
-          submitted_at: new Date().toISOString(),
-        },
-        { onConflict: "agreement_id" },
-      );
-      if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-      await db()
-        .from("agreements")
-        .update({ payment_status: "Payment Initiated" })
-        .eq("id", agreement.id);
-    }
-    return success(res, "PayU checkout initialized", {
-      action: config.paymentUrl,
-      fields: {
-        key: config.key,
-        txnid,
-        amount,
-        productinfo,
-        firstname,
-        email,
-        phone: custInfo.mobile,
-        udf1,
-        surl: callback,
-        furl: callback,
-        hash,
-      },
+    const { ObjectId } = await import("mongodb");
+    const custObj = await mongo.collection("customers").findOne({
+      email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
     });
+    if (!custObj) throw new AppError(404, "Customer profile not found", "NOT_FOUND");
+    
+    const agreementIdStr = String(req.params.id);
+    let filter: any = { customer_id: custObj._id };
+    try {
+      if (agreementIdStr.length === 24) {
+        filter = { _id: new ObjectId(agreementIdStr), customer_id: custObj._id };
+      } else {
+        filter = { agreement_number: agreementIdStr, customer_id: custObj._id };
+      }
+    } catch {}
+
+    agreement = await mongo.collection("agreements").findOne(filter);
+    if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+    customer = custObj;
+    cid = custObj._id.toString();
   }),
 );
 agreementsRouter.post(
@@ -1496,284 +875,103 @@ agreementsRouter.post(
   requirePermission("payments:create"),
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
-    const transactionReference = String(req.body.transactionReference ?? "").trim(),
-      method = String(req.body.method ?? "").trim();
 
-    if (mongo) {
-      const { ObjectId } = await import("mongodb");
-      const custObj = await mongo.collection("customers").findOne({
-        email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
-      });
-      if (!custObj) throw new AppError(404, "Customer profile not found", "NOT_FOUND");
-      
-      const agreementIdStr = String(req.params.id);
-      let filter: any = { customer_id: custObj._id };
-      try {
-        if (agreementIdStr.length === 24) {
-          filter = { _id: new ObjectId(agreementIdStr), customer_id: custObj._id };
-        } else {
-          filter = { agreement_number: agreementIdStr, customer_id: custObj._id };
-        }
-      } catch {}
+    const { ObjectId } = await import("mongodb");
+    const custObj = await mongo.collection("customers").findOne({
+      email: { $regex: new RegExp("^" + req.auth!.email.trim() + "$", "i") }
+    });
+    if (!custObj) throw new AppError(404, "Customer profile not found", "NOT_FOUND");
+    
+    const agreementIdStr = String(req.params.id);
+    let filter: any = { customer_id: custObj._id };
+    try {
+      if (agreementIdStr.length === 24) {
+        filter = { _id: new ObjectId(agreementIdStr), customer_id: custObj._id };
+      } else {
+        filter = { agreement_number: agreementIdStr, customer_id: custObj._id };
+      }
+    } catch {}
 
-      const agreement = await mongo.collection("agreements").findOne(filter);
-      if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
-      if (agreement.payment_status === "Paid")
-        return success(res, "Agreement payment already verified", agreement);
+    const agreement = await mongo.collection("agreements").findOne(filter);
+    if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+    if (agreement.payment_status === "Paid")
+      return success(res, "Agreement payment already verified", agreement);
 
-      if (!transactionReference || !method)
-        throw new AppError(
-          400,
-          "Payment method and transaction reference are required",
-          "VALIDATION_ERROR",
-        );
-
-      const requestDoc = {
-        agreement_id: agreement._id.toString(),
-        customer_id: custObj._id.toString(),
-        amount: agreement.payment_amount,
-        method,
-        transaction_reference: transactionReference,
-        status: "Pending",
-        submitted_at: new Date(),
-      };
-
-      await mongo.collection("agreement_payment_requests").replaceOne(
-        { agreement_id: agreement._id.toString() },
-        requestDoc,
-        { upsert: true }
-      );
-
-      await mongo.collection("agreements").updateOne(
-        { _id: agreement._id },
-        { $set: { payment_status: "Pending Verification" } }
-      );
-
-      return success(res.status(201), "Payment submitted for verification", requestDoc);
-    }
-
-    const cid = await customerId(req.auth!.userId);
-    if (!cid || !transactionReference || !method)
+    if (!transactionReference || !method)
       throw new AppError(
         400,
         "Payment method and transaction reference are required",
         "VALIDATION_ERROR",
       );
-    const { data: agreement } = await db()
-      .from("agreements")
-      .select("id,payment_amount,payment_status")
-      .eq("id", req.params.id)
-      .eq("customer_id", cid)
-      .maybeSingle();
-    if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
-    if (agreement.payment_status === "Paid")
-      return success(res, "Agreement payment already verified", agreement);
-    const { data, error } = await db()
-      .from("agreement_payment_requests")
-      .upsert(
-        {
-          agreement_id: agreement.id,
-          customer_id: cid,
-          amount: agreement.payment_amount,
-          method,
-          transaction_reference: transactionReference,
-          status: "Pending",
-          submitted_at: new Date().toISOString(),
-        },
-        { onConflict: "agreement_id" },
-      )
-      .select()
-      .single();
-    if (error) throw new AppError(400, error.message, "DATABASE_ERROR");
-    await db()
-      .from("agreements")
-      .update({ payment_status: "Pending Verification" })
-      .eq("id", agreement.id);
-    return success(res.status(201), "Payment submitted for verification", data);
+
+    const requestDoc = {
+      agreement_id: agreement._id.toString(),
+      customer_id: custObj._id.toString(),
+      amount: agreement.payment_amount,
+      method,
+      transaction_reference: transactionReference,
+      status: "Pending",
+      submitted_at: new Date(),
+    };
+
+    await mongo.collection("agreement_payment_requests").replaceOne(
+      { agreement_id: agreement._id.toString() },
+      requestDoc,
+      { upsert: true }
+    );
+
+    await mongo.collection("agreements").updateOne(
+      { _id: agreement._id },
+      { $set: { payment_status: "Pending Verification" } }
+    );
+
+    return success(res.status(201), "Payment submitted for verification", requestDoc);
   }),
 );
 
 export const payuCallback = asyncHandler(async (req, res) => {
-  const config = payuConfig(),
-    body = req.body as Record<string, string>,
-    txnid = String(body.txnid ?? ""),
-    status = String(body.status ?? ""),
-    receivedHash = String(body.hash ?? ""),
-    additionalCharges = body.additional_charges,
-    reverseSequence = `${config.salt}|${status}||||||${body.udf5 ?? ""}|${body.udf4 ?? ""}|${body.udf3 ?? ""}|${body.udf2 ?? ""}|${body.udf1 ?? ""}|${body.email ?? ""}|${body.firstname ?? ""}|${body.productinfo ?? ""}|${body.amount ?? ""}|${txnid}|${body.key ?? ""}`,
-    expectedHash = sha512(
-      additionalCharges
-        ? `${additionalCharges}|${reverseSequence}`
-        : reverseSequence,
-    ),
-    web = publicUrl(
-      process.env.WEB_URL,
-      "https://a1-solor-solution.vercel.app",
-    );
-  const redirect = (result: "success" | "failed") =>
-    res.redirect(303, `${web}/app/agreements?payment=${result}`);
-  if (
-    !txnid ||
-    body.key !== config.key ||
-    receivedHash.length !== expectedHash.length ||
-    !crypto.timingSafeEqual(
-      Buffer.from(receivedHash),
-      Buffer.from(expectedHash),
-    )
-  )
-    return redirect("failed");
-  const mongo = await getMongoDb();
-  let request: any = null;
-  if (mongo) {
-    request = await mongo.collection("agreement_payment_requests").findOne({
-      transaction_reference: txnid,
+    const mongo = await getMongoDb();
+
+  request = await mongo.collection("agreement_payment_requests").findOne({
+    transaction_reference: txnid,
+  });
+  });
+agreementsRouter.post(
+  "/:id/verify-payment",
+  requirePermission("payments:create"),
+  asyncHandler(async (req, res) => {
+    const mongo = await getMongoDb();
+
+    const request = await mongo.collection("agreement_payment_requests").findOne({
+      agreement_id: req.params.id,
+      status: "Pending",
     });
-  } else {
-    const { data } = await db()
-      .from("agreement_payment_requests")
-      .select("id,agreement_id,amount,transaction_reference")
-      .eq("transaction_reference", txnid)
-      .maybeSingle();
-    request = data;
-  }
-  if (
-    !request ||
-    Number(request.amount).toFixed(2) !== Number(body.amount).toFixed(2)
-  )
-    return redirect("failed");
-  const command = "verify_payment",
-    verifyHash = sha512(`${config.key}|${command}|${txnid}|${config.salt}`),
-    verificationResponse = await fetch(config.verifyUrl, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        key: config.key,
-        command,
-        var1: txnid,
-        hash: verifyHash,
-      }),
-    }),
-    verification = (await verificationResponse.json()) as {
-      transaction_details?: Record<
-        string,
-        { status?: string; amount?: string; unmappedstatus?: string }
-      >;
-    },
-    verified = verification.transaction_details?.[txnid];
-  if (
-    status !== "success" ||
-    verified?.status !== "success" ||
-    Number(verified.amount).toFixed(2) !== Number(request.amount).toFixed(2)
-  ) {
-    if (mongo) {
-      await mongo.collection("agreement_payment_requests").updateOne(
-        { _id: request._id },
-        { $set: { status: "Failed" } }
-      );
-    } else {
-      await db()
-        .from("agreement_payment_requests")
-        .update({ status: "Failed" })
-        .eq("id", request.id);
-    }
-    return redirect("failed");
-  }
-  if (mongo) {
+    if (!request)
+      throw new AppError(404, "Pending payment request not found", "NOT_FOUND");
+
     await mongo.collection("agreement_payment_requests").updateOne(
       { _id: request._id },
-      { $set: { status: "Verified", verified_at: new Date() } }
+      {
+        $set: {
+          status: "Verified",
+          verified_by: req.auth!.userId,
+          verified_at: new Date(),
+        },
+      }
     );
+
     const { ObjectId } = await import("mongodb");
     let agreementFilter = {};
     try {
-      agreementFilter = { _id: new ObjectId(request.agreement_id) };
+      agreementFilter = { _id: new ObjectId(String(req.params.id)) };
     } catch {
-      agreementFilter = { agreement_number: request.agreement_id };
+      agreementFilter = { agreement_number: String(req.params.id) };
     }
     await mongo.collection("agreements").updateOne(
       agreementFilter,
       { $set: { payment_status: "Paid", paid_at: new Date() } }
     );
-  } else {
-    const admin = db();
-    await admin
-      .from("agreement_payment_requests")
-      .update({ status: "Verified", verified_at: new Date().toISOString() })
-      .eq("id", request.id);
-    await admin
-      .from("agreements")
-      .update({ payment_status: "Paid", paid_at: new Date().toISOString() })
-      .eq("id", request.agreement_id);
-  }
-  return redirect("success");
-});
-agreementsRouter.post(
-  "/:id/verify-payment",
-  requirePermission("payments:create"),
-  asyncHandler(async (req, res) => {
-    if (req.auth!.roles.includes("customer"))
-      throw new AppError(
-        403,
-        "Payment verification is restricted",
-        "FORBIDDEN",
-      );
-    const mongo = await getMongoDb();
-    if (mongo) {
-      const request = await mongo.collection("agreement_payment_requests").findOne({
-        agreement_id: req.params.id,
-        status: "Pending",
-      });
-      if (!request)
-        throw new AppError(404, "Pending payment request not found", "NOT_FOUND");
 
-      await mongo.collection("agreement_payment_requests").updateOne(
-        { _id: request._id },
-        {
-          $set: {
-            status: "Verified",
-            verified_by: req.auth!.userId,
-            verified_at: new Date(),
-          },
-        }
-      );
-
-      const { ObjectId } = await import("mongodb");
-      let agreementFilter = {};
-      try {
-        agreementFilter = { _id: new ObjectId(String(req.params.id)) };
-      } catch {
-        agreementFilter = { agreement_number: String(req.params.id) };
-      }
-      await mongo.collection("agreements").updateOne(
-        agreementFilter,
-        { $set: { payment_status: "Paid", paid_at: new Date() } }
-      );
-
-      return success(res, "Agreement payment verified", { paid: true });
-    }
-
-    const { data: request } = await db()
-      .from("agreement_payment_requests")
-      .select("*")
-      .eq("agreement_id", req.params.id)
-      .eq("status", "Pending")
-      .maybeSingle();
-    if (!request)
-      throw new AppError(404, "Pending payment request not found", "NOT_FOUND");
-    const admin = db();
-    const { error } = await admin
-      .from("agreement_payment_requests")
-      .update({
-        status: "Verified",
-        verified_by: req.auth!.userId,
-        verified_at: new Date().toISOString(),
-      })
-      .eq("id", request.id);
-    if (error) throw new AppError(500, error.message, "DATABASE_ERROR");
-    await admin
-      .from("agreements")
-      .update({ payment_status: "Paid", paid_at: new Date().toISOString() })
-      .eq("id", req.params.id);
     return success(res, "Agreement payment verified", { paid: true });
   }),
 );
@@ -1781,110 +979,56 @@ agreementsRouter.post(
   "/",
   requirePermission("agreements:create"),
   asyncHandler(async (req, res) => {
-    try {
-      const b = req.body,
-        isCustomer = req.auth!.roles.includes("customer");
-      if (isCustomer)
-        throw new AppError(403, "Customers can only view and download their agreements", "FORBIDDEN");
+    const mongo = await getMongoDb();
 
-      const agreementCustomerId = String(b.customerId ?? "");
-      if (!agreementCustomerId || !b.consumerAddress || !b.agreementDate)
-        throw new AppError(400, "Customer, address and agreement date are required", "VALIDATION_ERROR");
+      const { ObjectId } = await import("mongodb");
+      // Resolve customer name
+      let customerName = "Customer";
+      let customObjId: any = null;
+      try {
+        customObjId = new ObjectId(agreementCustomerId);
+        const cust = await mongo.collection("customers").findOne({ _id: customObjId });
+        if (cust) customerName = String(cust.name ?? "Customer");
+      } catch { /* id may not be ObjectId */ }
 
-      // ── MongoDB path (primary) ──────────────────────────────────────────
-      const mongo = await getMongoDb();
-      if (mongo) {
-        const { ObjectId } = await import("mongodb");
-        // Resolve customer name
-        let customerName = "Customer";
-        let customObjId: any = null;
-        try {
-          customObjId = new ObjectId(agreementCustomerId);
-          const cust = await mongo.collection("customers").findOne({ _id: customObjId });
-          if (cust) customerName = String(cust.name ?? "Customer");
-        } catch { /* id may not be ObjectId */ }
-
-        // Find related quotation
-        let quotationId: any = null;
-        if (b.quotationId && String(b.quotationId).trim() !== "") {
-          try {
-            quotationId = new ObjectId(String(b.quotationId));
-          } catch { quotationId = b.quotationId; }
-        }
-
-        const today = new Date();
-        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
-        const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-        const agreementNumber = `AGR-${dateStr}-${rand}`;
-
-        const doc: Record<string, any> = {
-          agreement_number: agreementNumber,
-          customer_id: customObjId ?? agreementCustomerId,
-          customer_name: customerName,
-          quotation_id: quotationId,
-          status: "Draft",
-          payment_status: "Unpaid",
-          payment_amount: 1,
-          consumer_address: b.consumerAddress,
-          customer_signature_path: b.customerSignaturePath || null,
-          merged_data: {
-            consumer_address: b.consumerAddress,
-            agreement_date: b.agreementDate,
-            payment_terms: b.paymentTerms || null,
-          },
-          created_at: today.toISOString(),
-          updated_at: today.toISOString(),
-        };
-        const result = await mongo.collection("agreements").insertOne(doc);
-        return success(res.status(201), "Agreement draft created", {
-          ...doc,
-          id: result.insertedId.toString(),
-          _id: result.insertedId.toString(),
-          customers: { name: customerName },
-        });
-      }
-
-      // ── Supabase fallback path ──────────────────────────────────────────
-      const admin = db();
-      let validQuotationId: string | null = null;
+      // Find related quotation
+      let quotationId: any = null;
       if (b.quotationId && String(b.quotationId).trim() !== "") {
-        const { data: selectedQuote } = await admin
-          .from("quotations").select("id,customer_id").eq("id", b.quotationId).maybeSingle();
-        if (selectedQuote && String(selectedQuote.customer_id) === String(agreementCustomerId))
-          validQuotationId = selectedQuote.id;
+        try {
+          quotationId = new ObjectId(String(b.quotationId));
+        } catch { quotationId = b.quotationId; }
       }
-      if (!validQuotationId) {
-        const { data: latestQuote } = await admin
-          .from("quotations").select("id").eq("customer_id", agreementCustomerId)
-          .order("created_at", { ascending: false }).limit(1).maybeSingle();
-        if (latestQuote) validQuotationId = latestQuote.id;
-      }
-      const { data, error } = await admin
-        .from("agreements")
-        .insert({
-          agreement_number: number("AGR"),
-          customer_id: agreementCustomerId,
-          quotation_id: validQuotationId,
-          status: "Draft",
-          payment_status: "Unpaid",
-          payment_amount: 1,
-          customer_signature_path: b.customerSignaturePath || null,
-          merged_data: {
-            consumer_address: b.consumerAddress,
-            agreement_date: b.agreementDate,
-            payment_terms: b.paymentTerms || null,
-          },
-          created_by: req.auth?.userId || null,
-        })
-        .select()
-        .single();
-      if (error)
-        throw new AppError(error.code === "23503" ? 422 : 400, error.message || "Failed to insert agreement", "DATABASE_ERROR");
-      return success(res.status(201), "Agreement draft created", data);
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      throw new AppError(500, err instanceof Error ? err.message : "Unable to create agreement", "AGREEMENT_CREATION_FAILED");
-    }
+
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
+      const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+      const agreementNumber = `AGR-${dateStr}-${rand}`;
+
+      const doc: Record<string, any> = {
+        agreement_number: agreementNumber,
+        customer_id: customObjId ?? agreementCustomerId,
+        customer_name: customerName,
+        quotation_id: quotationId,
+        status: "Draft",
+        payment_status: "Unpaid",
+        payment_amount: 1,
+        consumer_address: b.consumerAddress,
+        customer_signature_path: b.customerSignaturePath || null,
+        merged_data: {
+          consumer_address: b.consumerAddress,
+          agreement_date: b.agreementDate,
+          payment_terms: b.paymentTerms || null,
+        },
+        created_at: today.toISOString(),
+        updated_at: today.toISOString(),
+      };
+      const result = await mongo.collection("agreements").insertOne(doc);
+      return success(res.status(201), "Agreement draft created", {
+        ...doc,
+        id: result.insertedId.toString(),
+        _id: result.insertedId.toString(),
+        customers: { name: customerName },
+      });
   }),
 );
 agreementsRouter.delete(

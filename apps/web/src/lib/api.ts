@@ -10,6 +10,11 @@ type ApiResponse<T> = {
 const transientStatuses = new Set([401, 500, 502, 503, 504]);
 
 const sessionToken = async (_refresh = false) => {
+  try {
+    const mongoToken = localStorage.getItem("a1_mongo_access_token");
+    if (mongoToken) return mongoToken;
+  } catch {}
+
   const { data: { session } } = await supabase.auth.getSession();
   if (session?.access_token) return session.access_token;
   try {

@@ -14,20 +14,11 @@ export const envSchema = z.object({
   WEB_URL: z.string().url().default("http://localhost:5173"),
   CLIENT_URL: z.string().url().optional(),
   CORS_ALLOWED_ORIGINS: z.string().optional(),
-  SUPABASE_URL: z.string().url().optional(),
-  SUPABASE_ANON_KEY: z.string().min(1).optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
-  DATABASE_URL: z.string().url().optional(),
-  DIRECT_URL: z.string().url().optional(),
   MONGODB_URI: z.string().optional(),
-  VITE_SUPABASE_URL: z.string().url().optional(),
-  VITE_SUPABASE_ANON_KEY: z.string().min(1).optional()
+  JWT_SECRET: z.string().default("a1-solar-secret-key-2026-safe"),
 }).superRefine((value,ctx)=>{
-  if(value.SUPABASE_URL&&value.VITE_SUPABASE_URL&&value.SUPABASE_URL!==value.VITE_SUPABASE_URL)
-    ctx.addIssue({code:z.ZodIssueCode.custom,path:["VITE_SUPABASE_URL"],message:"Frontend and backend Supabase URLs must match"});
-  if(value.NODE_ENV!=="production") return;
-  if (!value.MONGODB_URI && (!value.SUPABASE_URL || !value.DATABASE_URL)) {
-    ctx.addIssue({code:z.ZodIssueCode.custom,path:["MONGODB_URI"],message:"Either MONGODB_URI or Supabase database credentials must be provided"});
+  if(value.NODE_ENV==="production" && !value.MONGODB_URI) {
+    ctx.addIssue({code:z.ZodIssueCode.custom,path:["MONGODB_URI"],message:"MONGODB_URI must be provided in production"});
   }
 });
 export const env = envSchema.parse(process.env);

@@ -137,7 +137,6 @@ app.get("/api/v1/health", async (_req, res) => {
     status: "ok",
     database: {
       mongodb: mongoStatus,
-      supabase: Boolean(process.env.SUPABASE_URL),
     },
     timestamp: new Date().toISOString(),
   });

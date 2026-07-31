@@ -166,6 +166,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // 1. Check MongoDB access token first
+    try {
+      const mongoToken = localStorage.getItem("a1_mongo_access_token");
+      if (mongoToken) {
+        setLoading(true);
+        fetch(`${apiBaseUrl}/auth/me`, {
+          headers: { Authorization: `Bearer ${mongoToken}` }
+        })
+        .then(res => res.json())
+        .then((body: any) => {
+          if (body.success && body.data) {
+            const u: CurrentUser = {
+              id: body.data.user.id,
+              email: body.data.user.email,
+              fullName: body.data.user.full_name,
+              active: body.data.user.active,
+              roles: body.data.roles,
+              permissions: body.data.permissions,
+            };
+            setUser(u);
+          } else {
+            localStorage.removeItem("a1_mongo_access_token");
+            setUser(null);
+          }
+        })
+        .catch(() => {
+          localStorage.removeItem("a1_mongo_access_token");
+          setUser(null);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+        return;
+      }
+    } catch {}
+
     try {
       const storedAdmin = localStorage.getItem("a1_admin_auth_email");
       if (storedAdmin) {
@@ -221,6 +257,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               permissions: body.data.permissions ?? fullPermissions,
             };
             try {
+              if (body.data.access_token) {
+                localStorage.setItem("a1_mongo_access_token", body.data.access_token);
+              }
               localStorage.setItem("a1_admin_auth_email", normalizedEmail);
             } catch {}
             setUser(u);
@@ -260,6 +299,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signOut: async () => {
         try {
           localStorage.removeItem("a1_admin_auth_email");
+          localStorage.removeItem("a1_mongo_access_token");
         } catch {}
         await supabase.auth.signOut();
         setSession(null);
