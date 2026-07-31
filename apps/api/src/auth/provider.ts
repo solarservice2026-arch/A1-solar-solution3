@@ -48,8 +48,8 @@ export class SupabaseAuthProvider implements AuthProvider {
               userId: user.id,
               email: user.email,
               active: true,
-              roles: isAdminEmail ? ["super_admin", "admin"] : ["admin"],
-              permissions: fullPermissions,
+              roles: isAdminEmail ? ["super_admin", "admin"] : ["customer"],
+              permissions: isAdminEmail ? fullPermissions : [],
             };
           }
         }

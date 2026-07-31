@@ -289,6 +289,7 @@ export function agreementDocument(row: RecordValue) {
   return `<!doctype html><html><head><meta charset="utf-8"><title>Agreement ${esc(row.agreement_number)}</title>
 <style>${sharedCss()}</style></head><body>
 <main class="sheet">
+  <img class="hero" src="${esc(header)}" alt="A1 Solar Solution Header Banner">
 
 <!-- PAGE 1 -->
 <div class="page">
