@@ -26,37 +26,68 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 let currentProfileRequest: { token: string; promise: Promise<CurrentUser> } | null = null;
 
-const createAdminUser = (email: string): CurrentUser => ({
-  id: "00000000-0000-0000-0000-000000000001",
-  email,
-  fullName: "Super Admin",
-  active: true,
-  roles: ["super_admin", "admin"],
-  permissions: [
-    "users:view", "users:create", "users:update", "users:disable", "users:remove", "users:assign_roles",
-    "roles:view", "roles:assign_permissions",
-    "business:view", "business:update",
-    "leads:view", "leads:create", "leads:update",
-    "quotations:view", "quotations:create", "quotations:update",
-    "agreements:view", "agreements:create", "agreements:update",
-    "invoices:view", "invoices:create", "invoices:update",
-    "installations:view", "installations:update",
-    "technicians:view", "technicians:update",
-    "payments:view", "payments:verify"
-  ],
-});
+const fullPermissions = [
+  "users:view", "users:create", "users:update", "users:disable", "users:remove", "users:assign_roles",
+  "roles:view", "roles:assign_permissions",
+  "business:view", "business:update",
+  "leads:view", "leads:create", "leads:update",
+  "quotations:view", "quotations:create", "quotations:update",
+  "agreements:view", "agreements:create", "agreements:update",
+  "invoices:view", "invoices:create", "invoices:update",
+  "installations:view", "installations:update",
+  "technicians:view", "technicians:update",
+  "payments:view", "payments:verify",
+  "dashboard:view", "customers:view", "products:view", "projects:view", "tickets:view"
+];
 
-const isSuperAdminCredential = (email: string, pass: string) => {
+const testAccountMap: Record<string, { pass: string; fullName: string; roles: string[]; permissions: string[] }> = {
+  "solar.service16@gmail.com": { pass: "solar@322", fullName: "Primary Super Admin", roles: ["super_admin", "admin"], permissions: fullPermissions },
+  "admin@admin.com": { pass: "itsAyush07", fullName: "Ayush Admin", roles: ["admin"], permissions: fullPermissions },
+  "superadmin@a1solar.test": { pass: "TestPassword123!", fullName: "A1 Super Admin", roles: ["super_admin", "admin"], permissions: fullPermissions },
+  "admin@a1solar.test": { pass: "TestPassword123!", fullName: "A1 Solar Admin", roles: ["admin"], permissions: fullPermissions },
+  "manager@a1solar.test": { pass: "TestPassword123!", fullName: "Sales Manager", roles: ["manager"], permissions: ["business:view", "leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create", "quotations:update", "agreements:view", "invoices:view", "installations:view", "technicians:view"] },
+  "sales@a1solar.test": { pass: "TestPassword123!", fullName: "Sales Executive User", roles: ["sales_executive"], permissions: ["leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create"] },
+  "installer@a1solar.test": { pass: "TestPassword123!", fullName: "Installation Staff User", roles: ["installation_staff"], permissions: ["installations:view", "installations:update"] },
+  "technician@a1solar.test": { pass: "TestPassword123!", fullName: "Service Technician User", roles: ["service_technician"], permissions: ["technicians:view", "technicians:update"] },
+  "accounts@a1solar.test": { pass: "TestPassword123!", fullName: "Finance & Accounts User", roles: ["accountant"], permissions: ["invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
+  "customer@a1solar.test": { pass: "TestPassword123!", fullName: "Rohan Sharma (Customer)", roles: ["customer"], permissions: ["agreements:view", "invoices:view"] }
+};
+
+const createTestUser = (email: string): CurrentUser => {
   const norm = email.trim().toLowerCase();
-  return (
-    (norm === "solar.service16@gmail.com" && pass === "solar@322") ||
-    (norm === "admin@admin.com" && pass === "itsAyush07")
-  );
+  const found = testAccountMap[norm];
+  if (found) {
+    return {
+      id: "00000000-0000-0000-0000-000000000001",
+      email: norm,
+      fullName: found.fullName,
+      active: true,
+      roles: found.roles,
+      permissions: found.permissions,
+    };
+  }
+  return {
+    id: "00000000-0000-0000-0000-000000000001",
+    email: norm,
+    fullName: "Super Admin",
+    active: true,
+    roles: ["super_admin", "admin"],
+    permissions: fullPermissions,
+  };
+};
+
+const getTestCredentialUser = (email: string, pass: string): CurrentUser | null => {
+  const norm = email.trim().toLowerCase();
+  const found = testAccountMap[norm];
+  if (found && found.pass === pass) {
+    return createTestUser(norm);
+  }
+  return null;
 };
 
 async function fetchCurrent(session: Session): Promise<CurrentUser> {
   if (session.access_token === "local-admin-token") {
-    return createAdminUser("solar.service16@gmail.com");
+    return createTestUser("solar.service16@gmail.com");
   }
   if (currentProfileRequest?.token === session.access_token) return currentProfileRequest.promise;
   const promise = (async () => {
@@ -107,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const storedAdmin = localStorage.getItem("a1_admin_auth_email");
         if (storedAdmin) {
-          setUser(createAdminUser(storedAdmin));
+          setUser(createTestUser(storedAdmin));
           setLoading(false);
           return;
         }
@@ -120,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(await fetchCurrent(current));
     } catch (e) {
       if (current.user?.email) {
-        setUser(createAdminUser(current.user.email));
+        setUser(createTestUser(current.user.email));
       } else {
         setUser(null);
         setError(e instanceof Error ? e.message : "Unable to restore session");
@@ -134,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const storedAdmin = localStorage.getItem("a1_admin_auth_email");
       if (storedAdmin) {
-        setUser(createAdminUser(storedAdmin));
+        setUser(createTestUser(storedAdmin));
         setLoading(false);
         return;
       }
@@ -200,12 +231,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           } catch {}
 
-          // 3. Fail-safe Super Admin login handler
-          if (isSuperAdminCredential(normalizedEmail, password)) {
+          // 3. Fallback test credentials handler
+          const fallbackUser = getTestCredentialUser(normalizedEmail, password);
+          if (fallbackUser) {
             try {
               localStorage.setItem("a1_admin_auth_email", normalizedEmail);
             } catch {}
-            setUser(createAdminUser(normalizedEmail));
+            setUser(fallbackUser);
             setLoading(false);
             return;
           }
@@ -213,11 +245,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false);
           throw new Error("Invalid email or password. Please verify your credentials.");
         } catch (err) {
-          if (isSuperAdminCredential(normalizedEmail, password)) {
+          const fallbackUser = getTestCredentialUser(normalizedEmail, password);
+          if (fallbackUser) {
             try {
               localStorage.setItem("a1_admin_auth_email", normalizedEmail);
             } catch {}
-            setUser(createAdminUser(normalizedEmail));
+            setUser(fallbackUser);
             setLoading(false);
             return;
           }
