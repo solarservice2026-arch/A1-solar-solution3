@@ -1138,16 +1138,38 @@ agreementsRouter.get(
   asyncHandler(async (req, res) => {
     const mongo = await getMongoDb();
     if (mongo) {
-      const items = await mongo.collection("agreements").find().sort({ created_at: -1 }).toArray();
+      let filter = {};
+      const isCustomer = req.auth!.roles.includes("customer");
+      if (isCustomer) {
+        const custObj = await mongo.collection("customers").findOne({ email: req.auth!.email.trim().toLowerCase() });
+        if (custObj) {
+          filter = { customer_id: custObj._id };
+        } else {
+          return success(res, "Agreements retrieved", []);
+        }
+      }
+      const items = await mongo.collection("agreements").find(filter).sort({ created_at: -1 }).toArray();
       const customers = await mongo.collection("customers").find().toArray();
       const customerMap = new Map(customers.map((c) => [c._id.toString(), c]));
-      const formatted = items.map((a) => {
+      const formatted = items.map((a: any) => {
         const c = customerMap.get(String(a.customer_id));
-        return {
+        const base: any = {
           id: a._id.toString(),
           ...a,
           customers: c ? { name: c.name, mobile: c.mobile } : { name: a.customer_name || "Customer" },
         };
+        if (isCustomer && a.payment_status !== "Paid") {
+          return {
+            id: base.id,
+            agreement_number: base.agreement_number,
+            created_at: base.created_at,
+            payment_status: base.payment_status,
+            payment_amount: base.payment_amount,
+            customers: base.customers ? { name: base.customers.name } : null,
+            locked: true,
+          };
+        }
+        return base;
       });
       return success(res, "Agreements retrieved", formatted);
     }
@@ -1219,8 +1241,26 @@ agreementsRouter.get(
       try {
         if (idStr.length === 24) filter = { _id: new ObjectId(idStr) };
       } catch {}
+
+      if (req.auth!.roles.includes("customer")) {
+        const custObj = await mongo.collection("customers").findOne({ email: req.auth!.email.trim().toLowerCase() });
+        if (custObj) {
+          filter = { ...filter, customer_id: custObj._id };
+        } else {
+          throw new AppError(403, "Access denied", "FORBIDDEN");
+        }
+      }
+
       const agreement = await mongo.collection("agreements").findOne(filter);
       if (!agreement) throw new AppError(404, "Agreement not found", "NOT_FOUND");
+
+      if (req.auth!.roles.includes("customer") && agreement.payment_status !== "Paid") {
+        throw new AppError(
+          402,
+          "Verified payment is required before viewing or downloading this agreement",
+          "PAYMENT_REQUIRED",
+        );
+      }
       const c = await mongo.collection("customers").findOne({ _id: agreement.customer_id });
       return success(res, "Agreement document retrieved", {
         id: agreement._id.toString(),

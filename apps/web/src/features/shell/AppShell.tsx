@@ -98,6 +98,13 @@ export function AppShell() {
     [open, setOpen] = useState(false),
     location = useLocation(),
     navigate = useNavigate();
+
+  useEffect(() => {
+    if (user?.roles.includes("customer") && location.pathname === "/app") {
+      navigate("/app/agreements", { replace: true });
+    }
+  }, [user, location.pathname, navigate]);
+
   const allowed = (permission: string) =>
     user?.roles.includes("super_admin") ||
     user?.roles.includes("admin") ||

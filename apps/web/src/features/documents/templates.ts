@@ -163,10 +163,11 @@ export function quotationDocument(row: RecordValue) {
 
   <div class="page-break"></div>
 
-  <div class="doc-header cols-3" style="margin-top:8mm">
+  <div class="doc-header cols-4" style="margin-top:8mm">
     <div class="mini-brand">A1 SOLAR<br>SOLUTION</div>
     <div class="doc-title"><h1>QUOTATION</h1><b>Terms &amp; Conditions</b></div>
     <div class="meta">Valid Until<b>${esc(row.valid_until)}</b></div>
+    <div class="meta">Quotation #<b>${esc(row.quotation_number)}</b></div>
   </div>
   <div class="terms">
     <h2>Payment Terms</h2>

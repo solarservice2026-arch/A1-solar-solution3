@@ -2061,31 +2061,33 @@ export function AgreementsPage() {
                         </button>
                       )}
                       {row.payment_status !== "Paid" && (
-                        <button
-                          type="button"
-                          style={{ background: "#059669", color: "#fff", border: "none" }}
-                          onClick={() => void executeTestPayment(row)}
-                        >
-                          💳 Test Payment
-                        </button>
-                      )}
-                      {isCustomer && row.payment_status !== "Paid" && (
-                        <button
-                          type="button"
-                          disabled={payingId !== null}
-                          onClick={() => void submitPayment(row)}
-                        >
-                          {payingId === text(row.id)
-                            ? "Opening PayU…"
-                            : "Pay ₹1 with PayU"}
-                        </button>
-                      )}
-                      {canVerifyPayment &&
-                        row.payment_status === "Pending Verification" && (
-                          <button onClick={() => void verifyPayment(row)}>
-                            Verify payment
+                        <>
+                          {isCustomer && (
+                            <button
+                              type="button"
+                              style={{ background: "#2563eb", color: "#fff", border: "none" }}
+                              disabled={payingId !== null}
+                              onClick={() => void submitPayment(row)}
+                            >
+                              {payingId === text(row.id)
+                                ? "Opening PayU…"
+                                : `💳 Pay ${money(row.payment_amount)}`}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            style={{ background: "#059669", color: "#fff", border: "none" }}
+                            onClick={() => void executeTestPayment(row)}
+                          >
+                            ⚙️ Test Payment
                           </button>
-                        )}
+                          {canVerifyPayment && row.payment_status === "Pending Verification" && (
+                            <button onClick={() => void verifyPayment(row)}>
+                              Verify payment
+                            </button>
+                          )}
+                        </>
+                      )}
                       {canDelete && (
                         <button
                           className="danger"

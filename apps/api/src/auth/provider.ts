@@ -44,12 +44,88 @@ export class SupabaseAuthProvider implements AuthProvider {
               user.email.toLowerCase() === "solar.service16@gmail.com" ||
               user.email.toLowerCase() === "admin@admin.com";
 
+            if (isAdminEmail) {
+              return {
+                userId: user.id,
+                email: user.email,
+                active: true,
+                roles: ["super_admin", "admin"],
+                permissions: fullPermissions,
+              };
+            }
+
+            // Query roles & permissions from Supabase DB
+            const supabase = createClient(url, key);
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select(`
+                active,
+                user_roles (
+                  roles (
+                    name,
+                    role_permissions (
+                      permissions (
+                        key
+                      )
+                    )
+                  )
+                )
+              `)
+              .eq("id", user.id)
+              .maybeSingle();
+
+            const roles: string[] = [];
+            const permissionsSet = new Set<string>();
+            let isActive = true;
+
+            if (profile) {
+              isActive = profile.active !== false;
+              const uRoles = profile.user_roles;
+              const uRolesArr = Array.isArray(uRoles) ? uRoles : (uRoles ? [uRoles] : []);
+              for (const ur of uRolesArr) {
+                const roleObj = ur?.roles as any;
+                if (roleObj) {
+                  if (roleObj.name) roles.push(roleObj.name);
+                  const rolePerms = roleObj.role_permissions;
+                  const rolePermsArr = Array.isArray(rolePerms) ? rolePerms : (rolePerms ? [rolePerms] : []);
+                  for (const rp of rolePermsArr) {
+                    const permKey = rp?.permissions?.key;
+                    if (permKey) permissionsSet.add(permKey);
+                  }
+                }
+              }
+            }
+
+            // 1. If user is installer (installation_staff) or technician (service_technician),
+            // they must get view permissions for PDFs (quotations, agreements, invoices)
+            if (roles.includes("installation_staff") || roles.includes("service_technician")) {
+              permissionsSet.add("quotations:view");
+              permissionsSet.add("agreements:view");
+              permissionsSet.add("invoices:view");
+            }
+
+            // 2. If accountant, guarantee they have billing permissions
+            if (roles.includes("accountant")) {
+              permissionsSet.add("invoices:view");
+              permissionsSet.add("invoices:create");
+              permissionsSet.add("invoices:update");
+              permissionsSet.add("payments:view");
+              permissionsSet.add("payments:verify");
+            }
+
+            // 3. Default to customer if no roles exist
+            if (roles.length === 0) {
+              roles.push("customer");
+              permissionsSet.add("agreements:view");
+              permissionsSet.add("payments:create");
+            }
+
             return {
               userId: user.id,
               email: user.email,
-              active: true,
-              roles: isAdminEmail ? ["super_admin", "admin"] : ["customer"],
-              permissions: isAdminEmail ? fullPermissions : [],
+              active: isActive,
+              roles: roles as AppRole[],
+              permissions: Array.from(permissionsSet),
             };
           }
         }
