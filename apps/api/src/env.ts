@@ -26,7 +26,8 @@ export const envSchema = z.object({
   if(value.SUPABASE_URL&&value.VITE_SUPABASE_URL&&value.SUPABASE_URL!==value.VITE_SUPABASE_URL)
     ctx.addIssue({code:z.ZodIssueCode.custom,path:["VITE_SUPABASE_URL"],message:"Frontend and backend Supabase URLs must match"});
   if(value.NODE_ENV!=="production") return;
-  for(const key of ["SUPABASE_URL","SUPABASE_ANON_KEY","SUPABASE_SERVICE_ROLE_KEY","DATABASE_URL"] as const)
-    if(!value[key]) ctx.addIssue({code:z.ZodIssueCode.custom,path:[key],message:`Missing required environment variable: ${key}`});
+  if (!value.MONGODB_URI && (!value.SUPABASE_URL || !value.DATABASE_URL)) {
+    ctx.addIssue({code:z.ZodIssueCode.custom,path:["MONGODB_URI"],message:"Either MONGODB_URI or Supabase database credentials must be provided"});
+  }
 });
 export const env = envSchema.parse(process.env);
