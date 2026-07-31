@@ -104,8 +104,12 @@ export class SupabaseAuthProvider implements AuthProvider {
               permissionsSet.add("invoices:view");
             }
 
-            // 2. If accountant, guarantee they have billing permissions
+            // 2. If accountant, guarantee they have billing and operational view permissions
             if (roles.includes("accountant")) {
+              permissionsSet.add("dashboard:view");
+              permissionsSet.add("customers:view");
+              permissionsSet.add("quotations:view");
+              permissionsSet.add("agreements:view");
               permissionsSet.add("invoices:view");
               permissionsSet.add("invoices:create");
               permissionsSet.add("invoices:update");

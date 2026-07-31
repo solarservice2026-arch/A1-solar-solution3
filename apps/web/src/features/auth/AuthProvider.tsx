@@ -49,7 +49,7 @@ const testAccountMap: Record<string, { pass: string; fullName: string; roles: st
   "sales@a1solar.test": { pass: "TestPassword123!", fullName: "Sales Executive User", roles: ["sales_executive"], permissions: ["leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create"] },
   "installer@a1solar.test": { pass: "TestPassword123!", fullName: "Installation Staff User", roles: ["installation_staff"], permissions: ["installations:view", "installations:update"] },
   "technician@a1solar.test": { pass: "TestPassword123!", fullName: "Service Technician User", roles: ["service_technician"], permissions: ["technicians:view", "technicians:update"] },
-  "accounts@a1solar.test": { pass: "TestPassword123!", fullName: "Finance & Accounts User", roles: ["accountant"], permissions: ["invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
+  "accounts@a1solar.test": { pass: "TestPassword123!", fullName: "Finance & Accounts User", roles: ["accountant"], permissions: ["dashboard:view", "customers:view", "quotations:view", "agreements:view", "invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
   "customer@a1solar.test": { pass: "TestPassword123!", fullName: "Rohan Sharma (Customer)", roles: ["customer"], permissions: ["agreements:view", "invoices:view"] }
 };
 
