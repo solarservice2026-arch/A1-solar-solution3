@@ -287,6 +287,9 @@ button, .primary, .secondary, .back-button, .row-actions button, .toolbar button
     padding: 0 16px !important;
     height: 64px !important;
   }
+  .logout-header-button {
+    display: none !important;
+  }
 }
 
 /* Sidebar Navigation & Sign Out Button Pixel-Perfect Alignment */

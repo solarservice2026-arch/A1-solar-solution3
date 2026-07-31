@@ -162,15 +162,12 @@ export function AppShell() {
             </div>
           </div>
           <div className="app-user">
-            <button className="icon-button" aria-label="Notifications">
-              <Bell />
-            </button>
             <div className="user-profile-badge">
               <span>{user?.fullName ?? "Super Admin"}</span>
               <small>{(user?.roles ?? ["super_admin"]).join(", ").replaceAll("_", " ")}</small>
             </div>
             <button
-              className="icon-button"
+              className="icon-button logout-header-button"
               aria-label="Sign out"
               onClick={() => void signOut()}
               title="Sign out"
