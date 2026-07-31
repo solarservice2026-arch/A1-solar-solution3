@@ -161,8 +161,8 @@ export function AppShell() {
               <Bell />
             </button>
             <div className="user-profile-badge">
-              <span>{user?.fullName}</span>
-              <small>{user?.roles.join(", ").replaceAll("_", " ")}</small>
+              <span>{user?.fullName ?? "Super Admin"}</span>
+              <small>{(user?.roles ?? ["super_admin"]).join(", ").replaceAll("_", " ")}</small>
             </div>
           </div>
         </header>
