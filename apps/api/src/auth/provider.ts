@@ -131,21 +131,9 @@ export class SupabaseAuthProvider implements AuthProvider {
         }
       } catch {}
 
-      return {
-        userId: "00000000-0000-0000-0000-000000000001",
-        email: "solar.service16@gmail.com",
-        active: true,
-        roles: ["super_admin", "admin"],
-        permissions: fullPermissions,
-      };
+      return null;
     } catch {
-      return {
-        userId: "00000000-0000-0000-0000-000000000001",
-        email: "solar.service16@gmail.com",
-        active: true,
-        roles: ["super_admin", "admin"],
-        permissions: fullPermissions,
-      };
+      return null;
     }
   }
 }
