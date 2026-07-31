@@ -97,8 +97,19 @@ export class SupabaseAuthProvider implements AuthProvider {
             }
 
             // 1. If user is installer (installation_staff) or technician (service_technician),
-            // they must get view permissions for PDFs (quotations, agreements, invoices)
-            if (roles.includes("installation_staff") || roles.includes("service_technician")) {
+            // they get view permissions for PDFs (quotations, agreements, invoices), plus their specific duties
+            if (roles.includes("installation_staff")) {
+              permissionsSet.add("dashboard:view");
+              permissionsSet.add("projects:view");
+              permissionsSet.add("projects:update");
+              permissionsSet.add("quotations:view");
+              permissionsSet.add("agreements:view");
+              permissionsSet.add("invoices:view");
+            }
+            if (roles.includes("service_technician")) {
+              permissionsSet.add("dashboard:view");
+              permissionsSet.add("tickets:view");
+              permissionsSet.add("tickets:update");
               permissionsSet.add("quotations:view");
               permissionsSet.add("agreements:view");
               permissionsSet.add("invoices:view");

@@ -47,8 +47,8 @@ const testAccountMap: Record<string, { pass: string; fullName: string; roles: st
   "admin@a1solar.test": { pass: "TestPassword123!", fullName: "A1 Solar Admin", roles: ["admin"], permissions: fullPermissions },
   "manager@a1solar.test": { pass: "TestPassword123!", fullName: "Sales Manager", roles: ["manager"], permissions: ["business:view", "leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create", "quotations:update", "agreements:view", "invoices:view", "installations:view", "technicians:view"] },
   "sales@a1solar.test": { pass: "TestPassword123!", fullName: "Sales Executive User", roles: ["sales_executive"], permissions: ["leads:view", "leads:create", "leads:update", "quotations:view", "quotations:create"] },
-  "installer@a1solar.test": { pass: "TestPassword123!", fullName: "Installation Staff User", roles: ["installation_staff"], permissions: ["installations:view", "installations:update"] },
-  "technician@a1solar.test": { pass: "TestPassword123!", fullName: "Service Technician User", roles: ["service_technician"], permissions: ["technicians:view", "technicians:update"] },
+  "installer@a1solar.test": { pass: "TestPassword123!", fullName: "Installation Staff User", roles: ["installation_staff"], permissions: ["dashboard:view", "projects:view", "projects:update", "quotations:view", "agreements:view", "invoices:view"] },
+  "technician@a1solar.test": { pass: "TestPassword123!", fullName: "Service Technician User", roles: ["service_technician"], permissions: ["dashboard:view", "tickets:view", "tickets:update", "quotations:view", "agreements:view", "invoices:view"] },
   "accounts@a1solar.test": { pass: "TestPassword123!", fullName: "Finance & Accounts User", roles: ["accountant"], permissions: ["dashboard:view", "customers:view", "quotations:view", "agreements:view", "invoices:view", "invoices:create", "invoices:update", "payments:view", "payments:verify"] },
   "customer@a1solar.test": { pass: "TestPassword123!", fullName: "Rohan Sharma (Customer)", roles: ["customer"], permissions: ["agreements:view", "invoices:view"] }
 };
